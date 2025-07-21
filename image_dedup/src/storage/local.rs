@@ -209,4 +209,109 @@ mod tests {
 
         assert_eq!(data, content);
     }
+
+    #[tokio::test]
+    async fn test_read_nonexistent_file() {
+        let backend = LocalStorageBackend::new();
+        let result = backend.read_item("/nonexistent/file.txt").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_list_items_nonexistent_directory() {
+        let backend = LocalStorageBackend::new();
+        let result = backend.list_items("/nonexistent/directory").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_list_items_recursive_nonexistent_directory() {
+        let backend = LocalStorageBackend::new();
+        let result = backend.list_items_recursive("/nonexistent/directory").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_exists() {
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("exists.txt");
+        std::fs::write(&file_path, b"content").unwrap();
+
+        let backend = LocalStorageBackend::new();
+        
+        // 存在するファイルのテスト
+        let exists = backend.exists(file_path.to_str().unwrap()).await.unwrap();
+        assert!(exists);
+        
+        // 存在しないファイルのテスト
+        let not_exists = backend.exists("/nonexistent/file.txt").await.unwrap();
+        assert!(!not_exists);
+    }
+
+    #[tokio::test]
+    async fn test_delete_item_success() {
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("delete_me.txt");
+        std::fs::write(&file_path, b"content").unwrap();
+
+        let backend = LocalStorageBackend::new();
+        
+        // ファイルが存在することを確認
+        assert!(file_path.exists());
+        
+        // ファイルを削除
+        backend.delete_item(file_path.to_str().unwrap()).await.unwrap();
+        
+        // ファイルが削除されたことを確認
+        assert!(!file_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_delete_nonexistent_file() {
+        let backend = LocalStorageBackend::new();
+        let result = backend.delete_item("/nonexistent/file.txt").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_delete_directory_fails() {
+        let temp_dir = tempdir().unwrap();
+        let backend = LocalStorageBackend::new();
+        
+        let result = backend.delete_item(temp_dir.path().to_str().unwrap()).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Cannot delete directory"));
+    }
+
+    #[tokio::test]
+    async fn test_path_to_storage_item_file() {
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.jpg");
+        std::fs::write(&file_path, b"image data").unwrap();
+
+        let item = LocalStorageBackend::path_to_storage_item(&file_path).unwrap();
+        assert_eq!(item.name, "test.jpg");
+        assert_eq!(item.extension, Some("jpg".to_string()));
+        assert!(!item.is_directory);
+        assert_eq!(item.size, 10); // "image data" は 10 bytes
+    }
+
+    #[tokio::test]
+    async fn test_path_to_storage_item_directory() {
+        let temp_dir = tempdir().unwrap();
+        let dir_path = temp_dir.path().join("test_dir");
+        std::fs::create_dir(&dir_path).unwrap();
+
+        let item = LocalStorageBackend::path_to_storage_item(&dir_path).unwrap();
+        assert_eq!(item.name, "test_dir");
+        assert_eq!(item.extension, None);
+        assert!(item.is_directory);
+    }
+
+    #[tokio::test]
+    async fn test_path_to_storage_item_nonexistent() {
+        let nonexistent_path = std::path::Path::new("/nonexistent/path");
+        let result = LocalStorageBackend::path_to_storage_item(nonexistent_path);
+        assert!(result.is_err());
+    }
 }

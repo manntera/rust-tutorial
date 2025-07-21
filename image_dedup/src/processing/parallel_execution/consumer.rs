@@ -281,4 +281,61 @@ mod tests {
         assert_eq!(success_count, 1);
         assert_eq!(error_count, 1);
     }
+
+    #[tokio::test]
+    async fn test_consumer_semaphore_acquisition_failure() {
+        // セマフォエラーケースを直接テストするのは困難なため、
+        // チャンネルが閉じられた場合のテストで代替
+        let (_temp_dir, test_file) = create_test_png_file("test.png");
+        
+        let (work_tx, work_rx) = mpsc::channel::<String>(1);
+        let (result_tx, _result_rx) = mpsc::channel::<ProcessingResult>(1);
+        let work_rx = Arc::new(tokio::sync::Mutex::new(work_rx));
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+        
+        let worker_handle = spawn_single_consumer(
+            0,
+            Arc::new(StandardImageLoader::new()),
+            Arc::new(DCTHasher::new(8)),
+            work_rx,
+            result_tx.clone(),
+            semaphore,
+        );
+        
+        // ファイルパスを送信してから結果チャンネルを閉じる
+        work_tx.send(test_file.to_str().unwrap().to_string()).await.unwrap();
+        drop(result_tx); // 結果チャンネルを閉じる
+        drop(work_tx);
+        
+        // ワーカーは結果を送信できずに終了する
+        let result = worker_handle.await.unwrap();
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_consumer_pool_empty_queue() {
+        let (work_tx, work_rx) = mpsc::channel::<String>(1);
+        let (result_tx, result_rx) = mpsc::channel::<ProcessingResult>(1);
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(2));
+        
+        let worker_handles = spawn_consumers(
+            Arc::new(StandardImageLoader::new()),
+            Arc::new(DCTHasher::new(8)),
+            work_rx,
+            result_tx,
+            semaphore,
+            2,
+        );
+        
+        // 作業を送信せずにチャンネルを閉じる
+        drop(work_tx);
+        
+        // ワーカーは作業がないため正常終了
+        for handle in worker_handles {
+            handle.await.unwrap().unwrap();
+        }
+        
+        // 結果チャンネルからは何も受信されない
+        drop(result_rx);
+    }
 }

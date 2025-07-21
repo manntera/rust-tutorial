@@ -156,6 +156,7 @@ impl ImageLoaderBackend for StandardImageLoader {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+    use image::ImageFormat;
 
     #[tokio::test]
     async fn test_load_from_path() {
@@ -210,6 +211,70 @@ mod tests {
 
         assert_eq!(result.original_dimensions, (10, 10));
         assert!(!result.was_resized);
-        // u64は常に0以上なので比較を削除
+    }
+
+    #[tokio::test]
+    async fn test_load_from_invalid_bytes() {
+        let loader = StandardImageLoader::new();
+        let invalid_data = b"this is not an image";
+        
+        let result = loader.load_from_bytes(invalid_data).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_load_from_nonexistent_path() {
+        let loader = StandardImageLoader::new();
+        let nonexistent_path = std::path::Path::new("/nonexistent/image.png");
+        
+        let result = loader.load_from_path(nonexistent_path).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_load_with_invalid_format() {
+        let loader = StandardImageLoader::new();
+        let invalid_data = b"invalid image data";
+        
+        let result = loader.load_with_format(invalid_data, ImageFormat::Png).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_max_supported_pixels() {
+        let loader_without_limit = StandardImageLoader::new();
+        assert_eq!(loader_without_limit.max_supported_pixels(), None);
+
+        let loader_with_limit = StandardImageLoader::with_max_dimension(100);
+        assert_eq!(loader_with_limit.max_supported_pixels(), Some(10000));
+    }
+
+    #[tokio::test]
+    async fn test_estimate_memory_usage() {
+        let loader = StandardImageLoader::new();
+        let memory_usage = loader.estimate_memory_usage(100, 100);
+        // RGBA8 * 2 (processing overhead) = 4 * 2 = 8 bytes per pixel
+        assert_eq!(memory_usage, 100 * 100 * 8);
+
+        let loader_with_limit = StandardImageLoader::with_max_dimension(50);
+        let limited_memory_usage = loader_with_limit.estimate_memory_usage(100, 100);
+        // Should be limited to 50x50
+        assert_eq!(limited_memory_usage, 50 * 50 * 8);
+    }
+
+    #[tokio::test]
+    async fn test_load_with_format_success() {
+        let temp_dir = tempdir().unwrap();
+        let image_path = temp_dir.path().join("test.png");
+
+        // テスト画像を作成
+        let img = image::RgbImage::new(20, 20);
+        img.save(&image_path).unwrap();
+
+        let image_bytes = std::fs::read(&image_path).unwrap();
+        let loader = StandardImageLoader::new();
+        
+        let result = loader.load_with_format(&image_bytes, ImageFormat::Png).await.unwrap();
+        assert_eq!(result.original_dimensions, (20, 20));
     }
 }

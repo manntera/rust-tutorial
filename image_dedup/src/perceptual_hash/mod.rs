@@ -135,3 +135,141 @@ impl ComparisonResult {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hash_algorithm_equality() {
+        let dct1 = HashAlgorithm::DCT { size: 64 };
+        let dct2 = HashAlgorithm::DCT { size: 64 };
+        let dct3 = HashAlgorithm::DCT { size: 32 };
+
+        assert_eq!(dct1, dct2);
+        assert_ne!(dct1, dct3);
+
+        let avg = HashAlgorithm::Average { size: 64 };
+        let diff = HashAlgorithm::Difference { size: 64 };
+
+        assert_ne!(dct1, avg);
+        assert_ne!(avg, diff);
+    }
+
+    #[test]
+    fn test_hash_result_to_base64() {
+        let hash_result = HashResult {
+            hash_data: vec![0xFF, 0x00, 0xAB],
+            hash_size_bits: 24,
+            algorithm: HashAlgorithm::Average { size: 8 },
+            computation_time_ms: 10,
+            source_dimensions: (100, 100),
+        };
+
+        let base64 = hash_result.to_base64();
+        assert!(!base64.is_empty());
+    }
+
+    #[test]
+    fn test_hash_result_to_hex() {
+        let hash_result = HashResult {
+            hash_data: vec![0xFF, 0x00, 0xAB],
+            hash_size_bits: 24,
+            algorithm: HashAlgorithm::Average { size: 8 },
+            computation_time_ms: 10,
+            source_dimensions: (100, 100),
+        };
+
+        let hex = hash_result.to_hex();
+        assert_eq!(hex, "ff00ab");
+    }
+
+    #[test]
+    fn test_hash_result_to_bits() {
+        let hash_result = HashResult {
+            hash_data: vec![0xFF, 0x00],
+            hash_size_bits: 16,
+            algorithm: HashAlgorithm::Average { size: 8 },
+            computation_time_ms: 10,
+            source_dimensions: (100, 100),
+        };
+
+        let bits = hash_result.to_bits();
+        assert_eq!(bits, "1111111100000000");
+    }
+
+    #[test]
+    fn test_hash_result_display() {
+        let hash_result = HashResult {
+            hash_data: vec![0xFF, 0x00],
+            hash_size_bits: 16,
+            algorithm: HashAlgorithm::DCT { size: 8 },
+            computation_time_ms: 25,
+            source_dimensions: (200, 200),
+        };
+
+        let display_str = format!("{}", hash_result);
+        assert!(display_str.contains("DCT"));
+        assert!(display_str.contains("16 bits"));
+        assert!(display_str.contains("25ms"));
+        assert!(display_str.contains("ff00"));
+    }
+
+    #[test]
+    fn test_comparison_result_creation() {
+        let result = ComparisonResult::new(
+            5,
+            10,
+            HashAlgorithm::Average { size: 64 },
+            64,
+        );
+
+        assert_eq!(result.distance, 5);
+        assert_eq!(result.threshold_used, 10);
+        assert!(result.is_similar);
+        // Similarity should be around 92% (1 - 5/64) * 100
+        assert!(result.similarity_percentage > 90.0);
+        assert!(result.similarity_percentage < 95.0);
+    }
+
+    #[test]
+    fn test_comparison_result_not_similar() {
+        let result = ComparisonResult::new(
+            15,
+            10,
+            HashAlgorithm::Average { size: 64 },
+            64,
+        );
+
+        assert_eq!(result.distance, 15);
+        assert!(!result.is_similar);
+    }
+
+    #[test]
+    fn test_comparison_result_zero_distance() {
+        let result = ComparisonResult::new(
+            0,
+            10,
+            HashAlgorithm::DCT { size: 32 },
+            32,
+        );
+
+        assert_eq!(result.distance, 0);
+        assert!(result.is_similar);
+        assert_eq!(result.similarity_percentage, 100.0);
+    }
+
+    #[test]
+    fn test_comparison_result_max_distance() {
+        let result = ComparisonResult::new(
+            64,
+            10,
+            HashAlgorithm::Average { size: 64 },
+            64,
+        );
+
+        assert_eq!(result.distance, 64);
+        assert!(!result.is_similar);
+        assert_eq!(result.similarity_percentage, 0.0);
+    }
+}
