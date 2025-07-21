@@ -1,12 +1,13 @@
 use anyhow::Result;
-use image_dedup::{FileScanner, ImageLoader, PerceptualHasher};
+use image_dedup::{ImageLoader, PerceptualHasher, StorageFactory, StorageType};
 use std::path::Path;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     println!("=== 画像重複検知プログラム - 機能テスト ===\n");
 
-    println!("1. ファイルスキャナーのテスト");
-    test_file_scanner()?;
+    println!("1. ストレージスキャンのテスト");
+    test_storage_scan().await?;
 
     println!("\n2. 画像ローダーのテスト");
     test_image_loader()?;
@@ -17,26 +18,28 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn test_file_scanner() -> Result<()> {
-    let test_dir = Path::new("./test_images");
+async fn test_storage_scan() -> Result<()> {
+    let storage = StorageFactory::create(&StorageType::Local).await?;
+    let test_dir = "./test_images";
 
-    if !test_dir.exists() {
-        println!("  テストディレクトリが存在しません: {}", test_dir.display());
+    if !Path::new(test_dir).exists() {
+        println!("  テストディレクトリが存在しません: {}", test_dir);
         println!("  現在のディレクトリから画像ファイルを検索します...");
 
-        let current_dir = Path::new(".");
-        let files = FileScanner::scan_directory(current_dir)?;
-
-        println!("  見つかった画像ファイル数: {}", files.len());
-        for (i, file) in files.iter().take(5).enumerate() {
-            println!("    {}. {}", i + 1, file.display());
+        let items = storage.list_items(".").await?;
+        println!("  見つかった画像ファイル数: {}", items.len());
+        for (i, item) in items.iter().take(5).enumerate() {
+            println!("    {}. {} ({} bytes)", i + 1, item.name, item.size);
         }
-        if files.len() > 5 {
-            println!("    ... 他 {} ファイル", files.len() - 5);
+        if items.len() > 5 {
+            println!("    ... 他 {} ファイル", items.len() - 5);
         }
     } else {
-        let files = FileScanner::scan_directory(test_dir)?;
-        println!("  見つかった画像ファイル数: {}", files.len());
+        let items = storage.list_items(test_dir).await?;
+        println!("  見つかった画像ファイル数: {}", items.len());
+        for (i, item) in items.iter().enumerate() {
+            println!("    {}. {} ({} bytes)", i + 1, item.name, item.size);
+        }
     }
 
     Ok(())
