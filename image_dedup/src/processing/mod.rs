@@ -15,6 +15,7 @@ pub mod processor;    // 並列処理制御 (将来: engine.rs, pipeline.rs, wor
 
 // 具象実装
 pub mod implementations;
+pub mod engine;
 
 // 公開API - 各機能から再エクスポート
 pub use types::*;
@@ -30,4 +31,5 @@ pub use implementations::{
     NoOpProgressReporter,
     MemoryHashPersistence,
 };
+pub use engine::ParallelProcessingEngine;
 
