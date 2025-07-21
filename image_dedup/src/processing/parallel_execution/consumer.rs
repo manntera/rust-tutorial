@@ -1,6 +1,6 @@
 // Consumer - 並列ワーカー機能
 
-use crate::{
+use super::super::super::{
     image_loader::ImageLoaderBackend,
     perceptual_hash::PerceptualHashBackend,
 };
@@ -92,7 +92,7 @@ mod tests {
     use super::*;
     use crate::image_loader::standard::StandardImageLoader;
     use crate::perceptual_hash::dct_hash::DCTHasher;
-    use crate::processing::ProcessingResult;
+    use crate::processing::types::ProcessingResult;
     use crate::processing::tests::{MINIMAL_PNG_DATA, create_test_png_file, create_multiple_test_png_files};
     use tempfile::TempDir;
     use std::fs;

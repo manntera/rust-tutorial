@@ -1,6 +1,6 @@
 // Worker - 単一ファイル処理機能
 
-use crate::{
+use super::super::super::{
     image_loader::ImageLoaderBackend,
     perceptual_hash::PerceptualHashBackend,
 };

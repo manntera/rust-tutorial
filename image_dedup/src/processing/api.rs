@@ -1,7 +1,7 @@
 // 高レベル公開API
 // ProcessingPipelineを簡単に使用できるようにするための便利な関数
 
-use crate::{
+use super::super::{
     image_loader::ImageLoaderBackend,
     perceptual_hash::PerceptualHashBackend,
     storage::StorageBackend,

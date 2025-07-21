@@ -1,7 +1,7 @@
 // Pipeline - Producer-Consumer パイプライン
 // メインパイプライン機能とオーケストレーション
 
-use crate::{
+use super::super::super::{
     image_loader::ImageLoaderBackend,
     perceptual_hash::PerceptualHashBackend,
 };

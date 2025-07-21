@@ -1,7 +1,7 @@
 // ProcessingEngine - 完全依存性注入による並列処理エンジン
 // 全ての依存関係がコンストラクタで注入される真のDIパターン実装
 
-use crate::{
+use super::super::super::{
     image_loader::ImageLoaderBackend,
     perceptual_hash::PerceptualHashBackend,
     storage::StorageBackend,
