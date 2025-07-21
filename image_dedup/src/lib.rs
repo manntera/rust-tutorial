@@ -1,6 +1,7 @@
 pub mod image_loader;
 pub mod perceptual_hash;
 pub mod storage;
+pub mod processing;
 
 // DIコンテナの役割を果たすジェネリックなApp構造体
 pub struct App<L, H, S>
