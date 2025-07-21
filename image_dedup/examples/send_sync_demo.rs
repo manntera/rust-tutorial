@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use tokio;
 
 // Send + Syncを実装する型の例
 #[derive(Debug, Clone)]
@@ -46,12 +45,12 @@ async fn demonstrate_send() {
 
     // データを別のタスクに移動（move）
     let task = tokio::spawn(async move {
-        println!("  別のタスクで実行: {:?}", data);
+        println!("  別のタスクで実行: {data:?}");
         data.value * 2
     });
 
     let result = task.await.unwrap();
-    println!("  タスクの結果: {}", result);
+    println!("  タスクの結果: {result}");
 }
 
 // Sync の例 - 参照を複数のタスクで共有
@@ -65,12 +64,12 @@ async fn demonstrate_sync() {
     let data2 = Arc::clone(&data);
 
     let task1 = tokio::spawn(async move {
-        println!("  タスク1: {:?}", data1);
+        println!("  タスク1: {data1:?}");
         data1.value + 10
     });
 
     let task2 = tokio::spawn(async move {
-        println!("  タスク2: {:?}", data2);
+        println!("  タスク2: {data2:?}");
         data2.value + 20
     });
 

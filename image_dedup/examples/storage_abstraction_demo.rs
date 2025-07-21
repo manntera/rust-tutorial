@@ -1,6 +1,6 @@
 use anyhow::Result;
-use image_dedup::PerceptualHasher;
 use image_dedup::storage::{StorageFactory, StorageType};
+use image_dedup::{HashAlgorithm, PerceptualHashFactory};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -10,11 +10,11 @@ async fn main() -> Result<()> {
     let storage_type = StorageType::Local;
     let storage = StorageFactory::create(&storage_type).await?;
 
-    println!("使用するストレージ: {:?}\n", storage_type);
+    println!("使用するストレージ: {storage_type:?}\n");
 
     // テストディレクトリをスキャン
     let test_dir = "./test_images";
-    println!("スキャン対象: {}", test_dir);
+    println!("スキャン対象: {test_dir}");
 
     let items = storage.list_items(test_dir).await?;
     println!("見つかった画像: {} 個\n", items.len());
@@ -38,8 +38,9 @@ async fn main() -> Result<()> {
         let image = image::load_from_memory(&image_data)?;
 
         // ハッシュを計算
-        let hasher = PerceptualHasher::new();
-        let hash = hasher.generate_hash(&image)?;
+        let algorithm = HashAlgorithm::DCT { size: 8 };
+        let hasher = PerceptualHashFactory::create(&algorithm).await?;
+        let hash = hasher.generate_hash(&image).await?;
 
         println!("ハッシュ値: {}", hash.to_base64());
     }
@@ -59,7 +60,7 @@ async fn demonstrate_future_s3_usage() {
     println!("    region: \"ap-northeast-1\".to_string(),");
     println!("}};");
     println!("let s3_storage = StorageFactory::create(&s3_storage_type).await?;");
-    println!("");
+    println!();
     println!("// 使い方は同じ - インターフェースが統一されている");
     println!("let items = s3_storage.list_items(\"images/\").await?;");
     println!("let data = s3_storage.read_item(\"images/photo.jpg\").await?;");
