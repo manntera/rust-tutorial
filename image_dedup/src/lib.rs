@@ -140,6 +140,7 @@ where
     {
         let engine = self.create_processing_engine();
         engine.process_directory(path).await
+            .map_err(|e| anyhow::anyhow!("並列処理エラー: {e}"))
     }
 
     /// 静音並列処理でディレクトリを処理（バックグラウンド用）
@@ -151,6 +152,7 @@ where
     {
         let engine = self.create_quiet_processing_engine();
         engine.process_directory(path).await
+            .map_err(|e| anyhow::anyhow!("静音並列処理エラー: {e}"))
     }
 }
 

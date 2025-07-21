@@ -1,7 +1,7 @@
 // 処理に関連するデータ型定義
 
 /// 処理時のメタデータ
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ProcessingMetadata {
     pub file_size: u64,
     pub processing_time_ms: u64,

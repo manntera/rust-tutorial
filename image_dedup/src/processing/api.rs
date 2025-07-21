@@ -10,11 +10,11 @@ use super::{
     ProcessingEngine,
     traits::{ProcessingConfig, ProgressReporter, HashPersistence},
     types::ProcessingSummary,
+    error::ProcessingResult,
     DefaultProcessingConfig,
     ConsoleProgressReporter,
     MemoryHashPersistence,
 };
-use anyhow::Result;
 
 // ========================================
 // DI対応API - ProcessingEngineベース
@@ -26,7 +26,7 @@ use anyhow::Result;
 pub async fn process_directory_with_engine<L, H, S, C, R, P>(
     directory: &str,
     engine: &ProcessingEngine<L, H, S, C, R, P>,
-) -> Result<ProcessingSummary>
+) -> ProcessingResult<ProcessingSummary>
 where
     L: ImageLoaderBackend + Clone + 'static,
     H: PerceptualHashBackend + Clone + 'static,
@@ -44,7 +44,7 @@ where
 pub async fn process_files_with_engine<L, H, S, C, R, P>(
     files: Vec<String>,
     engine: &ProcessingEngine<L, H, S, C, R, P>,
-) -> Result<ProcessingSummary>
+) -> ProcessingResult<ProcessingSummary>
 where
     L: ImageLoaderBackend + Clone + 'static,
     H: PerceptualHashBackend + Clone + 'static,

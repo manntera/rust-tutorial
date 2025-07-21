@@ -4,6 +4,7 @@
 // 基盤モジュール
 pub mod types;                  // データ構造定義
 pub mod traits;                 // トレイト定義
+pub mod error;                  // エラー型定義
 pub mod tests;                  // テストユーティリティ
 pub mod api;                    // 高レベル公開API
 
@@ -24,11 +25,12 @@ pub use traits::{
 
 // 公開API - データ型
 pub use types::*;
+pub use error::{ProcessingError, ProcessingResult};
 
 // 公開API - 具象実装
 pub use configuration::DefaultProcessingConfig;
 pub use progress_monitoring::{ConsoleProgressReporter, NoOpProgressReporter};
-pub use data_persistence::MemoryHashPersistence;
+pub use data_persistence::{MemoryHashPersistence, JsonHashPersistence};
 
 // 公開API - コア機能
 pub use parallel_execution::ProcessingEngine;

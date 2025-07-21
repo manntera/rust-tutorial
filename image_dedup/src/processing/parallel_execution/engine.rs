@@ -8,8 +8,8 @@ use super::super::super::{
 };
 use super::super::traits::{ProcessingConfig, ProgressReporter, HashPersistence};
 use super::super::types::ProcessingSummary;
+use super::super::error::{ProcessingError, ProcessingResult};
 use super::pipeline::ProcessingPipeline;
-use anyhow::Result;
 use std::sync::Arc;
 
 /// 完全依存性注入による並列処理エンジン
@@ -62,7 +62,7 @@ where
     /// 指定されたディレクトリを並列処理
     /// 
     /// ファイル発見から処理完了まで全てを管理する高レベルAPI
-    pub async fn process_directory(&self, directory: &str) -> Result<ProcessingSummary>
+    pub async fn process_directory(&self, directory: &str) -> ProcessingResult<ProcessingSummary>
     where
         L: Clone,
         H: Clone,
@@ -79,7 +79,7 @@ where
     /// 指定されたファイルリストを並列処理
     /// 
     /// より細かい制御が必要な場合のAPI
-    pub async fn process_files(&self, files: Vec<String>) -> Result<ProcessingSummary>
+    pub async fn process_files(&self, files: Vec<String>) -> ProcessingResult<ProcessingSummary>
     where
         L: Clone,
         H: Clone,
@@ -99,13 +99,24 @@ where
             Arc::new(self.reporter.clone()),
             Arc::new(self.persistence.clone()),
         ).await
+        .map_err(|e| ProcessingError::parallel_execution(format!("パイプライン実行エラー: {e}")))
     }
 
     /// ディレクトリから画像ファイルを発見
     /// 
     /// ストレージバックエンドを使用してファイル発見処理を行う
-    async fn discover_image_files(&self, directory: &str) -> Result<Vec<String>> {
-        let items = self.storage.list_items(directory).await?;
+    async fn discover_image_files(&self, directory: &str) -> ProcessingResult<Vec<String>> {
+        // 設定検証
+        if self.config.max_concurrent_tasks() == 0 {
+            return Err(ProcessingError::configuration("並列タスク数は1以上である必要があります"));
+        }
+        
+        if self.config.batch_size() == 0 {
+            return Err(ProcessingError::configuration("バッチサイズは1以上である必要があります"));
+        }
+        
+        let items = self.storage.list_items(directory).await
+            .map_err(|e| ProcessingError::file_discovery(directory, e))?;
         
         let mut image_files = Vec::new();
         for item in items {
@@ -149,6 +160,7 @@ mod tests {
         DefaultProcessingConfig,
         ConsoleProgressReporter,
         MemoryHashPersistence,
+        ProcessingError,
     };
     use tempfile::TempDir;
     use std::fs;
@@ -263,5 +275,60 @@ mod tests {
         assert_eq!(result.total_files, 0);
         assert_eq!(result.processed_files, 0);
         assert_eq!(result.error_count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_process_directory_validation_errors() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path().to_str().unwrap();
+
+        // 無効な並列数の設定
+        let invalid_config = DefaultProcessingConfig::default().with_max_concurrent(0);
+        let engine = ProcessingEngine::new(
+            StandardImageLoader::new(),
+            DCTHasher::new(8),
+            LocalStorageBackend::new(),
+            invalid_config,
+            ConsoleProgressReporter::quiet(),
+            MemoryHashPersistence::new(),
+        );
+
+        let result = engine.process_directory(temp_path).await;
+        assert!(matches!(result, Err(ProcessingError::ConfigurationError { .. })));
+        assert!(result.unwrap_err().to_string().contains("並列タスク数は1以上である必要があります"));
+
+        // 無効なバッチサイズの設定
+        let invalid_config = DefaultProcessingConfig::default().with_batch_size(0);
+        let engine = ProcessingEngine::new(
+            StandardImageLoader::new(),
+            DCTHasher::new(8),
+            LocalStorageBackend::new(),
+            invalid_config,
+            ConsoleProgressReporter::quiet(),
+            MemoryHashPersistence::new(),
+        );
+
+        let result = engine.process_directory(temp_path).await;
+        assert!(matches!(result, Err(ProcessingError::ConfigurationError { .. })));
+        assert!(result.unwrap_err().to_string().contains("バッチサイズは1以上である必要があります"));
+    }
+
+    #[tokio::test]
+    async fn test_process_nonexistent_directory() {
+        let engine = ProcessingEngine::new(
+            StandardImageLoader::new(),
+            DCTHasher::new(8),
+            LocalStorageBackend::new(),
+            DefaultProcessingConfig::default(),
+            ConsoleProgressReporter::quiet(),
+            MemoryHashPersistence::new(),
+        );
+
+        let result = engine.process_directory("/nonexistent/directory").await;
+        assert!(matches!(result, Err(ProcessingError::FileDiscoveryError { .. })));
+        
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("ファイル発見エラー"));
+        assert!(error.to_string().contains("/nonexistent/directory"));
     }
 }
