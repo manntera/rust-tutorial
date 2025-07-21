@@ -111,6 +111,19 @@ impl ProcessingError {
 /// 並列処理の結果型
 pub type ProcessingResult<T> = std::result::Result<T, ProcessingError>;
 
+// From実装を個別に追加
+impl From<anyhow::Error> for ProcessingError {
+    fn from(error: anyhow::Error) -> Self {
+        ProcessingError::InternalError { source: error }
+    }
+}
+
+impl From<tokio::task::JoinError> for ProcessingError {
+    fn from(error: tokio::task::JoinError) -> Self {
+        ProcessingError::TaskError { source: error }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
