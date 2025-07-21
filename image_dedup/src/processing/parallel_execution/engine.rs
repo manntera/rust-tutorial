@@ -148,6 +148,98 @@ where
 // ProcessingEngineは直接所有権ベースの単一コンストラクタのみサポート
 // 共有が必要な場合はArc<ProcessingEngine>を使用する
 
+impl<L, H, S, C, R, P> ProcessingEngine<L, H, S, C, R, P>
+where
+    L: ImageLoaderBackend + Clone + 'static,
+    H: PerceptualHashBackend + Clone + 'static,
+    S: StorageBackend + 'static,
+    C: ProcessingConfig,
+    R: ProgressReporter + Clone + 'static,
+    P: HashPersistence + Clone + 'static,
+{
+    /// 指定されたディレクトリを並列処理する（設定等を使用）
+    pub async fn process_directory_with_settings(&self) -> ProcessingResult<ProcessingSummary>
+    where
+        L: Clone,
+        H: Clone,
+        R: Clone,
+        P: Clone,
+    {
+        self.process_directory_with_config(
+            ".",  // デフォルトディレクトリ
+            &self.config,
+            &self.reporter,
+            &self.persistence,
+        ).await
+    }
+    
+    /// 指定されたディレクトリを指定された設定で並列処理する
+    pub async fn process_directory_with_config(
+        &self,
+        path: &str,
+        config: &C,
+        reporter: &R,
+        persistence: &P,
+    ) -> ProcessingResult<ProcessingSummary>
+    where
+        L: Clone,
+        H: Clone,
+        R: Clone,
+        P: Clone,
+    {
+        let start_time = std::time::Instant::now();
+        
+        // 設定検証
+        if config.max_concurrent_tasks() == 0 {
+            return Err(ProcessingError::configuration("並列タスク数は1以上である必要があります"));
+        }
+        
+        if config.batch_size() == 0 {
+            return Err(ProcessingError::configuration("バッチサイズは1以上である必要があります"));
+        }
+        
+        // ファイル発見
+        let files = self.discover_image_files(path).await?;
+        let total_files = files.len();
+        
+        if config.enable_progress_reporting() {
+            reporter.report_started(total_files).await;
+        }
+        
+        // パイプライン実行
+        let pipeline = ProcessingPipeline::new(
+            Arc::new(self.loader.clone()),
+            Arc::new(self.hasher.clone()),
+        );
+        
+        let mut summary = pipeline.execute(
+            files, 
+            config, 
+            Arc::new(reporter.clone()),
+            Arc::new(persistence.clone())
+        ).await
+        .map_err(|e| ProcessingError::parallel_execution(format!("パイプライン実行エラー: {e}")))?;
+        
+        // タイミング計測完了
+        let total_time = start_time.elapsed().as_millis() as u64;
+        summary.total_processing_time_ms = total_time;
+        
+        if summary.processed_files > 0 {
+            summary.average_time_per_file_ms = total_time as f64 / summary.processed_files as f64;
+        }
+        
+        if config.enable_progress_reporting() {
+            reporter.report_completed(summary.processed_files, summary.error_count).await;
+        }
+        
+        // 永続化完了処理
+        persistence.finalize().await
+            .map_err(ProcessingError::persistence)?;
+        
+        Ok(summary)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,5 +422,83 @@ mod tests {
         let error = result.unwrap_err();
         assert!(error.to_string().contains("ファイル発見エラー"));
         assert!(error.to_string().contains("/nonexistent/directory"));
+    }
+    
+    #[tokio::test]
+    async fn test_process_directory_with_config() {
+        use crate::processing::tests::test_data::MINIMAL_PNG_DATA;
+        
+        // テスト用ディレクトリと画像作成
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path().to_str().unwrap();
+        
+        // テスト用ファイル作成（有効な画像データを使用）
+        fs::write(temp_dir.path().join("test1.png"), MINIMAL_PNG_DATA).unwrap();
+        fs::write(temp_dir.path().join("test2.png"), MINIMAL_PNG_DATA).unwrap();
+        fs::write(temp_dir.path().join("not_image.txt"), b"text content").unwrap();
+
+        let engine = ProcessingEngine::new(
+            StandardImageLoader::new(),
+            DCTHasher::new(8),
+            LocalStorageBackend::new(),
+            DefaultProcessingConfig::default().with_max_concurrent(2),
+            ConsoleProgressReporter::quiet(),
+            MemoryHashPersistence::new(),
+        );
+
+        // 新しいAPIを使用して処理実行
+        let summary = engine.process_directory_with_config(
+            temp_path,
+            engine.config(),
+            engine.reporter(),
+            engine.persistence(),
+        ).await.unwrap();
+
+        // 結果確認
+        assert_eq!(summary.total_files, 2); // 画像ファイルのみ
+        assert_eq!(summary.processed_files, 2);
+        assert_eq!(summary.error_count, 0);
+        assert!(summary.total_processing_time_ms > 0);
+        assert!(summary.average_time_per_file_ms > 0.0);
+
+        // 永続化確認
+        let stored_data = engine.persistence().get_stored_data();
+        assert_eq!(stored_data.len(), 2);
+        assert!(engine.persistence().is_finalized());
+    }
+    
+    #[tokio::test]
+    async fn test_process_directory_with_errors() {
+        use crate::processing::tests::test_data::SMALL_PNG;
+        
+        let temp_dir = TempDir::new().unwrap();
+        
+        // 有効な画像
+        fs::write(temp_dir.path().join("valid.png"), SMALL_PNG).unwrap();
+        // 無効なファイル
+        fs::write(temp_dir.path().join("invalid.jpg"), b"not a valid image").unwrap();
+        
+        let engine = ProcessingEngine::new(
+            StandardImageLoader::new(),
+            DCTHasher::new(8),
+            LocalStorageBackend::new(),
+            DefaultProcessingConfig::default(),
+            ConsoleProgressReporter::quiet(),
+            MemoryHashPersistence::new(),
+        );
+        
+        let summary = engine.process_directory_with_config(
+            temp_dir.path().to_str().unwrap(),
+            engine.config(),
+            engine.reporter(),
+            engine.persistence(),
+        ).await.unwrap();
+        
+        assert_eq!(summary.total_files, 2);
+        assert_eq!(summary.processed_files, 1); // 有効な画像のみ
+        assert_eq!(summary.error_count, 1); // 無効な画像
+        
+        let stored_data = engine.persistence().get_stored_data();
+        assert_eq!(stored_data.len(), 1);
     }
 }

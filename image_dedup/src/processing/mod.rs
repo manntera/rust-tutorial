@@ -30,7 +30,7 @@ pub use error::{ProcessingError, ProcessingResult};
 // 公開API - 具象実装
 pub use configuration::DefaultProcessingConfig;
 pub use progress_monitoring::{ConsoleProgressReporter, NoOpProgressReporter};
-pub use data_persistence::{MemoryHashPersistence, JsonHashPersistence};
+pub use data_persistence::{MemoryHashPersistence, JsonHashPersistence, StreamingJsonHashPersistence};
 
 // 公開API - コア機能
 pub use parallel_execution::ProcessingEngine;

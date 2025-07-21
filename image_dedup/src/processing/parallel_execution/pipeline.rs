@@ -162,4 +162,103 @@ mod tests {
         assert_eq!(result.processed_files, 0);
         assert_eq!(result.error_count, 0);
     }
+    
+    #[tokio::test]
+    async fn test_pipeline_end_to_end() {
+        use tempfile::TempDir;
+        use std::fs;
+        use crate::processing::tests::test_data::SMALL_PNG;
+        
+        // 複数のテスト用画像作成
+        let temp_dir = TempDir::new().unwrap();
+        let mut test_files = Vec::new();
+        
+        // 有効な画像ファイル作成
+        for i in 0..3 {
+            let test_file = temp_dir.path().join(format!("valid{}.png", i));
+            fs::write(&test_file, SMALL_PNG).unwrap();
+            test_files.push(test_file.to_str().unwrap().to_string());
+        }
+        
+        // 無効なファイル作成
+        let invalid_file = temp_dir.path().join("invalid.jpg");
+        fs::write(&invalid_file, b"not a valid image").unwrap();
+        test_files.push(invalid_file.to_str().unwrap().to_string());
+        
+        // パイプライン実行
+        let pipeline = ProcessingPipeline::new(
+            Arc::new(StandardImageLoader::new()),
+            Arc::new(DCTHasher::new(8)),
+        );
+        
+        let config = DefaultProcessingConfig::default()
+            .with_max_concurrent(2)
+            .with_batch_size(2);
+        let reporter = Arc::new(NoOpProgressReporter::new());
+        let persistence = Arc::new(MemoryHashPersistence::new());
+        
+        let summary = pipeline.execute(
+            test_files,
+            &config,
+            reporter,
+            persistence.clone(),
+        ).await.unwrap();
+        
+        // 結果確認
+        assert_eq!(summary.total_files, 4);
+        assert_eq!(summary.processed_files, 3); // 有効なファイル3つ
+        assert_eq!(summary.error_count, 1); // 無効なファイル1つ
+        assert!(summary.total_processing_time_ms > 0);
+        assert!(summary.average_time_per_file_ms > 0.0);
+        
+        // 永続化確認
+        let stored_data = persistence.get_stored_data();
+        assert_eq!(stored_data.len(), 3);
+        
+        for i in 0..3 {
+            assert!(stored_data.iter().any(|(path, _)| path.contains(&format!("valid{}.png", i))));
+        }
+    }
+    
+    #[tokio::test]
+    async fn test_pipeline_with_high_concurrency() {
+        use tempfile::TempDir;
+        use std::fs;
+        use crate::processing::tests::test_data::SMALL_PNG;
+        
+        let temp_dir = TempDir::new().unwrap();
+        let mut test_files = Vec::new();
+        
+        // 10個のファイル作成
+        for i in 0..10 {
+            let test_file = temp_dir.path().join(format!("test{}.png", i));
+            fs::write(&test_file, SMALL_PNG).unwrap();
+            test_files.push(test_file.to_str().unwrap().to_string());
+        }
+        
+        let pipeline = ProcessingPipeline::new(
+            Arc::new(StandardImageLoader::new()),
+            Arc::new(DCTHasher::new(8)),
+        );
+        
+        let config = DefaultProcessingConfig::default()
+            .with_max_concurrent(8) // 高い並列度
+            .with_batch_size(3);
+        let reporter = Arc::new(NoOpProgressReporter::new());
+        let persistence = Arc::new(MemoryHashPersistence::new());
+        
+        let summary = pipeline.execute(
+            test_files,
+            &config,
+            reporter,
+            persistence.clone(),
+        ).await.unwrap();
+        
+        assert_eq!(summary.total_files, 10);
+        assert_eq!(summary.processed_files, 10);
+        assert_eq!(summary.error_count, 0);
+        
+        let stored_data = persistence.get_stored_data();
+        assert_eq!(stored_data.len(), 10);
+    }
 }

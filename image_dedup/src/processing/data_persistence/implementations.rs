@@ -492,3 +492,281 @@ mod tests {
         assert_eq!(json_value.as_array().unwrap().len(), 1);
     }
 }
+
+/// ストリーミングJSON書き込み対応版
+/// より効率的なメモリ使用量と高速書き込みを実現
+#[derive(Debug, Clone)]
+pub struct StreamingJsonHashPersistence {
+    file_path: String,
+    writer: Arc<AsyncMutex<Option<BufWriter<File>>>>,
+    entries_written: Arc<AsyncMutex<usize>>,
+    buffer: Arc<AsyncMutex<Vec<(String, String, ProcessingMetadata)>>>,
+    buffer_size: usize,
+}
+
+impl StreamingJsonHashPersistence {
+    /// 新しいストリーミング永続化インスタンスを作成
+    pub fn new<P: AsRef<Path>>(file_path: P) -> Self {
+        Self {
+            file_path: file_path.as_ref().to_string_lossy().to_string(),
+            writer: Arc::new(AsyncMutex::new(None)),
+            entries_written: Arc::new(AsyncMutex::new(0)),
+            buffer: Arc::new(AsyncMutex::new(Vec::new())),
+            buffer_size: 100, // デフォルトバッファサイズ
+        }
+    }
+    
+    /// カスタムバッファサイズで作成
+    pub fn with_buffer_size<P: AsRef<Path>>(file_path: P, buffer_size: usize) -> Self {
+        Self {
+            file_path: file_path.as_ref().to_string_lossy().to_string(),
+            writer: Arc::new(AsyncMutex::new(None)),
+            entries_written: Arc::new(AsyncMutex::new(0)),
+            buffer: Arc::new(AsyncMutex::new(Vec::with_capacity(buffer_size))),
+            buffer_size,
+        }
+    }
+    
+    /// ファイルを初期化（JSON配列開始）
+    async fn initialize_file(&self) -> Result<()> {
+        let mut writer_guard = self.writer.lock().await;
+        if writer_guard.is_some() {
+            return Ok(());
+        }
+        
+        // 親ディレクトリ作成
+        if let Some(parent) = Path::new(&self.file_path).parent() {
+            tokio::fs::create_dir_all(parent).await
+                .map_err(|e| anyhow::anyhow!("ディレクトリ作成エラー: {e}"))?;
+        }
+        
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&self.file_path)
+            .await
+            .map_err(|e| anyhow::anyhow!("ファイル作成エラー: {e}"))?;
+            
+        let mut writer = BufWriter::new(file);
+        writer.write_all(b"[\n").await
+            .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+            
+        *writer_guard = Some(writer);
+        Ok(())
+    }
+    
+    /// バッファをフラッシュ
+    async fn flush_buffer(&self) -> Result<()> {
+        let mut buffer_guard = self.buffer.lock().await;
+        if buffer_guard.is_empty() {
+            return Ok(());
+        }
+        
+        self.initialize_file().await?;
+        
+        let mut writer_guard = self.writer.lock().await;
+        let writer = writer_guard.as_mut()
+            .ok_or_else(|| anyhow::anyhow!("ファイルが初期化されていません"))?;
+        
+        let mut entries_written = self.entries_written.lock().await;
+        
+        for (file_path, hash, metadata) in buffer_guard.drain(..) {
+            let entry = HashEntry {
+                file_path,
+                hash,
+                metadata,
+            };
+            
+            // カンマ追加（最初のエントリ以外）
+            if *entries_written > 0 {
+                writer.write_all(b",\n").await
+                    .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+            }
+            
+            // JSON エントリを書き込み
+            let json_str = serde_json::to_string_pretty(&entry)
+                .map_err(|e| anyhow::anyhow!("JSON変換エラー: {e}"))?;
+                
+            let indented = json_str.lines()
+                .map(|line| format!("  {line}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+                
+            writer.write_all(indented.as_bytes()).await
+                .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+                
+            *entries_written += 1;
+        }
+        
+        writer.flush().await
+            .map_err(|e| anyhow::anyhow!("フラッシュエラー: {e}"))?;
+            
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl HashPersistence for StreamingJsonHashPersistence {
+    async fn store_hash(
+        &self,
+        file_path: &str,
+        hash: &str,
+        metadata: &ProcessingMetadata,
+    ) -> Result<()> {
+        self.store_batch(&[(file_path.to_string(), hash.to_string(), metadata.clone())]).await
+    }
+    
+    async fn store_batch(
+        &self,
+        results: &[(String, String, ProcessingMetadata)],
+    ) -> Result<()> {
+        if results.is_empty() {
+            return Ok(());
+        }
+        
+        let mut buffer_guard = self.buffer.lock().await;
+        
+        for (file_path, hash, metadata) in results {
+            buffer_guard.push((file_path.clone(), hash.clone(), metadata.clone()));
+        }
+        
+        // バッファがいっぱいになったらフラッシュ
+        if buffer_guard.len() >= self.buffer_size {
+            drop(buffer_guard); // ロックを先に解放
+            self.flush_buffer().await?
+        }
+        
+        Ok(())
+    }
+    
+    async fn finalize(&self) -> Result<()> {
+        // 残りのバッファをフラッシュ
+        self.flush_buffer().await?;
+        
+        let mut writer_guard = self.writer.lock().await;
+        if let Some(mut writer) = writer_guard.take() {
+            // JSON配列終了
+            writer.write_all(b"\n]").await
+                .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+                
+            writer.flush().await
+                .map_err(|e| anyhow::anyhow!("フラッシュエラー: {e}"))?;
+        } else {
+            // ロックを解放してから初期化処理を行う
+            drop(writer_guard);
+            
+            // ファイルが初期化されていない場合は空のJSONファイルを作成
+            self.initialize_file().await?;
+            let mut writer_guard = self.writer.lock().await;
+            if let Some(mut writer) = writer_guard.take() {
+                writer.write_all(b"\n]").await
+                    .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+                writer.flush().await
+                    .map_err(|e| anyhow::anyhow!("フラッシュエラー: {e}"))?;
+            }
+        }
+        
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod streaming_tests {
+    use super::*;
+    use tempfile::TempDir;
+    use serde_json::Value;
+    
+    #[tokio::test]
+    async fn test_streaming_json_hash_persistence_basic() {
+        let temp_dir = TempDir::new().unwrap();
+        let json_file = temp_dir.path().join("streaming_test.json");
+        
+        let persistence = StreamingJsonHashPersistence::with_buffer_size(&json_file, 2);
+        
+        let metadata = ProcessingMetadata {
+            file_size: 1024,
+            processing_time_ms: 100,
+            image_dimensions: (512, 512),
+            was_resized: false,
+        };
+        
+        // 複数のエントリを追加（バッファサイズを超える）
+        persistence.store_hash("/test1.jpg", "hash1", &metadata).await.unwrap();
+        persistence.store_hash("/test2.png", "hash2", &metadata).await.unwrap();
+        persistence.store_hash("/test3.gif", "hash3", &metadata).await.unwrap();
+        
+        persistence.finalize().await.unwrap();
+        
+        // ファイル内容確認
+        let content = tokio::fs::read_to_string(&json_file).await.unwrap();
+        let json_value: Value = serde_json::from_str(&content).unwrap();
+        
+        assert!(json_value.is_array());
+        let array = json_value.as_array().unwrap();
+        assert_eq!(array.len(), 3);
+        
+        for (i, entry) in array.iter().enumerate() {
+            let expected_path = format!("/test{}.{}", i + 1, match i { 0 => "jpg", 1 => "png", 2 => "gif", _ => unreachable!() });
+            let expected_hash = format!("hash{}", i + 1);
+            
+            assert_eq!(entry["file_path"], expected_path);
+            assert_eq!(entry["hash"], expected_hash);
+            assert_eq!(entry["metadata"]["file_size"], 1024);
+        }
+    }
+    
+    #[tokio::test]
+    async fn test_streaming_batch_processing() {
+        let temp_dir = TempDir::new().unwrap();
+        let json_file = temp_dir.path().join("batch_streaming.json");
+        
+        let persistence = StreamingJsonHashPersistence::with_buffer_size(&json_file, 5);
+        
+        let metadata = ProcessingMetadata {
+            file_size: 2048,
+            processing_time_ms: 150,
+            image_dimensions: (1024, 1024),
+            was_resized: true,
+        };
+        
+        // 大きなバッチを処理
+        let batch: Vec<_> = (0..10)
+            .map(|i| (
+                format!("/batch{:02}.jpg", i),
+                format!("batchhash{:02}", i),
+                metadata.clone()
+            ))
+            .collect();
+            
+        persistence.store_batch(&batch).await.unwrap();
+        persistence.finalize().await.unwrap();
+        
+        let content = tokio::fs::read_to_string(&json_file).await.unwrap();
+        let json_value: Value = serde_json::from_str(&content).unwrap();
+        let array = json_value.as_array().unwrap();
+        
+        assert_eq!(array.len(), 10);
+        
+        for (i, entry) in array.iter().enumerate() {
+            assert_eq!(entry["file_path"], format!("/batch{:02}.jpg", i));
+            assert_eq!(entry["hash"], format!("batchhash{:02}", i));
+            assert_eq!(entry["metadata"]["file_size"], 2048);
+        }
+    }
+    
+    #[tokio::test]
+    async fn test_streaming_empty_finalize() {
+        let temp_dir = TempDir::new().unwrap();
+        let json_file = temp_dir.path().join("empty_streaming.json");
+        
+        let persistence = StreamingJsonHashPersistence::new(&json_file);
+        persistence.finalize().await.unwrap();
+        
+        let content = tokio::fs::read_to_string(&json_file).await.unwrap();
+        let json_value: Value = serde_json::from_str(&content).unwrap();
+        
+        assert!(json_value.is_array());
+        assert_eq!(json_value.as_array().unwrap().len(), 0);
+    }
+}

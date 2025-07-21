@@ -19,6 +19,9 @@ pub const MINIMAL_PNG_DATA: &[u8] = &[
     0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
 ];
 
+/// Alias for MINIMAL_PNG_DATA for compatibility with test code
+pub const SMALL_PNG: &[u8] = MINIMAL_PNG_DATA;
+
 /// Creates a temporary PNG file with minimal valid data
 /// 
 /// Returns a tuple of (TempDir, PathBuf) where the PathBuf points to a valid PNG file.
