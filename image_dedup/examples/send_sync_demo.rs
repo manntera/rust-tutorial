@@ -11,6 +11,7 @@ struct ThreadSafeData {
 use std::cell::RefCell;
 use std::rc::Rc;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 struct NotThreadSafeData {
     // Rcは参照カウントがスレッドセーフでないためSendでない

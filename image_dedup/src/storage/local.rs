@@ -7,6 +7,12 @@ use walkdir::WalkDir;
 /// ローカルファイルシステム用のストレージバックエンド
 pub struct LocalStorageBackend;
 
+impl Default for LocalStorageBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LocalStorageBackend {
     pub fn new() -> Self {
         Self
@@ -63,7 +69,7 @@ impl StorageBackend for LocalStorageBackend {
         let path = Path::new(id);
         let data = tokio::fs::read(path)
             .await
-            .with_context(|| format!("Failed to read file: {}", id))?;
+            .with_context(|| format!("Failed to read file: {id}"))?;
         Ok(data)
     }
 
@@ -77,7 +83,7 @@ impl StorageBackend for LocalStorageBackend {
         if path.is_file() {
             tokio::fs::remove_file(path)
                 .await
-                .with_context(|| format!("Failed to delete file: {}", id))?;
+                .with_context(|| format!("Failed to delete file: {id}"))?;
         } else {
             anyhow::bail!("Cannot delete directory using delete_item");
         }

@@ -1,7 +1,6 @@
 use anyhow::Result;
-use image_dedup::storage::{StorageBackend, StorageFactory, StorageType};
-use image_dedup::{ImageLoader, PerceptualHasher};
-use std::path::Path;
+use image_dedup::PerceptualHasher;
+use image_dedup::storage::{StorageFactory, StorageType};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -88,22 +87,22 @@ mod future_s3_implementation {
 
     #[async_trait]
     impl StorageBackend for S3StorageBackend {
-        async fn list_items(&self, prefix: &str) -> Result<Vec<StorageItem>> {
+        async fn list_items(&self, _prefix: &str) -> Result<Vec<StorageItem>> {
             // S3 ListObjectsV2 APIを使用
             todo!("S3実装")
         }
 
-        async fn read_item(&self, id: &str) -> Result<Vec<u8>> {
+        async fn read_item(&self, _id: &str) -> Result<Vec<u8>> {
             // S3 GetObject APIを使用
             todo!("S3実装")
         }
 
-        async fn exists(&self, id: &str) -> Result<bool> {
+        async fn exists(&self, _id: &str) -> Result<bool> {
             // S3 HeadObject APIを使用
             todo!("S3実装")
         }
 
-        async fn delete_item(&self, id: &str) -> Result<()> {
+        async fn delete_item(&self, _id: &str) -> Result<()> {
             // S3 DeleteObject APIを使用
             todo!("S3実装")
         }

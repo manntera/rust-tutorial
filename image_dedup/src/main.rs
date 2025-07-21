@@ -23,7 +23,7 @@ async fn test_storage_scan() -> Result<()> {
     let test_dir = "./test_images";
 
     if !Path::new(test_dir).exists() {
-        println!("  テストディレクトリが存在しません: {}", test_dir);
+        println!("  テストディレクトリが存在しません: {test_dir}");
         println!("  現在のディレクトリから画像ファイルを検索します...");
 
         let items = storage.list_items(".").await?;
