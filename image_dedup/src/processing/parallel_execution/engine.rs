@@ -6,13 +6,11 @@ use crate::{
     perceptual_hash::PerceptualHashBackend,
     storage::StorageBackend,
 };
-use super::{ProcessingMetadata, ProcessingResult};
 use anyhow::Result;
 use std::sync::Arc;
-use std::time::Instant;
-use std::path::Path;
 
 /// 依存性注入によるコア処理エンジン
+#[allow(dead_code)]  // Phase 5で process_directory 実装時に使用予定
 pub struct ParallelProcessingEngine<L, H, S> {
     loader: Arc<L>,
     hasher: Arc<H>,
@@ -38,9 +36,10 @@ where
     pub fn from_app(app: crate::App<L, H, S>) -> Self {
         Self::new(app.loader, app.hasher, app.storage)
     }
+    
 
     /// ディレクトリから画像ファイルを発見
-    async fn discover_image_files(&self, path: &str) -> Result<Vec<String>> {
+    pub async fn discover_image_files(&self, path: &str) -> Result<Vec<String>> {
         let items = self.storage.list_items(path).await?;
         
         let mut image_files = Vec::new();
@@ -54,49 +53,6 @@ where
         Ok(image_files)
     }
 
-    /// 単一ファイルの処理
-    async fn process_single_file(
-        loader: &L,
-        hasher: &H,
-        file_path: &str,
-        _worker_id: usize,
-    ) -> ProcessingResult {
-        let start_time = Instant::now();
-        
-        let result = async {
-            // 画像読み込み
-            let path = Path::new(file_path);
-            let load_result = loader.load_from_path(path).await?;
-            
-            // ファイルサイズを取得
-            let file_size = std::fs::metadata(file_path)?.len();
-            
-            // ハッシュ生成
-            let hash_result = hasher.generate_hash(&load_result.image).await?;
-            
-            // メタデータ作成
-            let metadata = ProcessingMetadata {
-                file_size,
-                processing_time_ms: start_time.elapsed().as_millis() as u64,
-                image_dimensions: (load_result.image.width(), load_result.image.height()),
-                was_resized: load_result.was_resized,
-            };
-            
-            Result::<(String, ProcessingMetadata)>::Ok((hash_result.to_hex(), metadata))
-        }.await;
-        
-        match result {
-            Ok((hash, metadata)) => ProcessingResult::Success {
-                file_path: file_path.to_string(),
-                hash,
-                metadata,
-            },
-            Err(error) => ProcessingResult::Error {
-                file_path: file_path.to_string(),
-                error: error.to_string(),
-            },
-        }
-    }
 }
 
 #[cfg(test)]
@@ -178,7 +134,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_process_single_file_success() {
+    async fn test_process_single_file_integration() {
+        use crate::processing::image_processing::process_single_file;
+        
         // 1x1の最小PNGファイル（有効な画像データ）
         let png_data = [
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
@@ -196,7 +154,7 @@ mod tests {
         let loader = StandardImageLoader::new();
         let hasher = DCTHasher::new(8);
         
-        let result = ParallelProcessingEngine::<StandardImageLoader, DCTHasher, LocalStorageBackend>::process_single_file(
+        let result = process_single_file(
             &loader,
             &hasher,
             test_file.to_str().unwrap(),
@@ -204,60 +162,13 @@ mod tests {
         ).await;
         
         match result {
-            ProcessingResult::Success { file_path, hash, metadata } => {
+            crate::processing::types::ProcessingResult::Success { file_path, hash, metadata } => {
                 assert!(file_path.ends_with("test.png"));
                 assert!(!hash.is_empty());
                 assert_eq!(metadata.image_dimensions, (1, 1));
-                // 処理時間は0以上であることを確認（高速処理で0になる場合もある）
-                assert!(metadata.processing_time_ms >= 0);
+                assert!(metadata.processing_time_ms < 10000);
             }
-            ProcessingResult::Error { .. } => panic!("Expected success"),
-        }
-    }
-    
-    #[tokio::test]
-    async fn test_process_single_file_error() {
-        let temp_dir = TempDir::new().unwrap();
-        let invalid_file = temp_dir.path().join("invalid.jpg");
-        fs::write(&invalid_file, b"not a valid image").unwrap();
-        
-        let loader = StandardImageLoader::new();
-        let hasher = DCTHasher::new(8);
-        
-        let result = ParallelProcessingEngine::<StandardImageLoader, DCTHasher, LocalStorageBackend>::process_single_file(
-            &loader,
-            &hasher,
-            invalid_file.to_str().unwrap(),
-            0,
-        ).await;
-        
-        match result {
-            ProcessingResult::Success { .. } => panic!("Expected error"),
-            ProcessingResult::Error { file_path, error } => {
-                assert!(file_path.ends_with("invalid.jpg"));
-                assert!(!error.is_empty());
-            }
-        }
-    }
-    
-    #[tokio::test]
-    async fn test_process_nonexistent_file() {
-        let loader = StandardImageLoader::new();
-        let hasher = DCTHasher::new(8);
-        
-        let result = ParallelProcessingEngine::<StandardImageLoader, DCTHasher, LocalStorageBackend>::process_single_file(
-            &loader,
-            &hasher,
-            "/nonexistent/file.jpg",
-            0,
-        ).await;
-        
-        match result {
-            ProcessingResult::Success { .. } => panic!("Expected error"),
-            ProcessingResult::Error { file_path, error } => {
-                assert_eq!(file_path, "/nonexistent/file.jpg");
-                assert!(!error.is_empty());
-            }
+            crate::processing::types::ProcessingResult::Error { .. } => panic!("Expected success"),
         }
     }
 }

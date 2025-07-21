@@ -1,35 +1,37 @@
-// 並列処理システムのモジュール
-// 機能別フォルダ構造によるアーキテクチャ
-//
-// この設計は将来の拡張性を考慮しています。
-// 各機能モジュールは独立して拡張可能です。
+// 並列処理システム - 機能別整理された構造
+// 機能的な目的に基づいてコードを分離し、保守性と可読性を向上
 
-// コアモジュール
-pub mod types;        // データ構造定義
+// 基盤モジュール
+pub mod types;                  // データ構造定義
+pub mod traits;                 // トレイト定義
+pub mod tests;                  // テストユーティリティ
 
-// 機能モジュール (抜象化レベル別)
-pub mod config;       // 設定管理 (将来: default.rs, file.rs, env.rs)
-pub mod reporting;    // 進捗報告・監視 (将来: console.rs, file.rs, metrics.rs)
-pub mod persistence;  // データ永続化 (将来: json.rs, sqlite.rs, csv.rs)
-pub mod processor;    // 並列処理制御 (将来: engine.rs, pipeline.rs, worker.rs)
+// 機能別モジュール
+pub mod image_processing;       // 画像処理機能
+pub mod parallel_execution;     // 並列実行機能
+pub mod progress_monitoring;    // 進捗監視機能
+pub mod data_persistence;       // データ永続化機能
+pub mod configuration;          // 設定管理機能
 
-// 具象実装
-pub mod implementations;
-pub mod engine;
-
-// 公開API - 各機能から再エクスポート
-pub use types::*;
-pub use config::ProcessingConfig;
-pub use reporting::ProgressReporter;
-pub use persistence::HashPersistence;
-pub use processor::ParallelProcessor;
-
-// 具象実装の再エクスポート
-pub use implementations::{
-    DefaultProcessingConfig,
-    ConsoleProgressReporter,
-    NoOpProgressReporter,
-    MemoryHashPersistence,
+// 公開API - トレイト
+pub use traits::{
+    ProcessingConfig,
+    ProgressReporter,
+    HashPersistence,
+    ParallelProcessor,
 };
-pub use engine::ParallelProcessingEngine;
 
+// 公開API - データ型
+pub use types::*;
+
+// 公開API - 具象実装
+pub use configuration::DefaultProcessingConfig;
+pub use progress_monitoring::{ConsoleProgressReporter, NoOpProgressReporter};
+pub use data_persistence::MemoryHashPersistence;
+
+// 公開API - コア機能
+pub use parallel_execution::{ParallelProcessingEngine, ProcessingPipeline};
+pub use image_processing::process_single_file;
+
+// 公開API - テストユーティリティ
+pub use tests::*;
