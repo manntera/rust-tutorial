@@ -4,7 +4,7 @@ use super::super::traits::ProgressReporter;
 use async_trait::async_trait;
 
 /// コンソール出力による進捗報告実装
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ConsoleProgressReporter {
     quiet: bool,
 }
@@ -48,7 +48,7 @@ impl ProgressReporter for ConsoleProgressReporter {
 }
 
 /// 何もしない進捗報告実装（テスト・ベンチマーク用）
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct NoOpProgressReporter;
 
 impl NoOpProgressReporter {

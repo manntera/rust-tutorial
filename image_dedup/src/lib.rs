@@ -3,7 +3,17 @@ pub mod perceptual_hash;
 pub mod storage;
 pub mod processing;
 
+use processing::{
+    ProcessingEngine,
+    traits::{ProcessingConfig, ProgressReporter, HashPersistence},
+    DefaultProcessingConfig,
+    ConsoleProgressReporter,
+    NoOpProgressReporter,
+    MemoryHashPersistence,
+};
+
 // DIコンテナの役割を果たすジェネリックなApp構造体
+// 依存関係を直接所有し、必要に応じてArc<App>で共有する設計
 pub struct App<L, H, S>
 where
     L: image_loader::ImageLoaderBackend,
@@ -30,7 +40,7 @@ where
         }
     }
 
-    /// アプリケーションの主要なロジックを実行
+    /// アプリケーションの主要なロジック（シンプルな逐次処理）
     pub async fn run(&self, path: &str) -> anyhow::Result<()> {
         println!("Starting image deduplication process in: {path}");
 
@@ -48,6 +58,99 @@ where
 
         println!("Process finished.");
         Ok(())
+    }
+
+    // ========================================
+    // 並列処理エンジン作成メソッド
+    // ========================================
+
+    /// デフォルト設定の並列処理エンジンを作成
+    /// 
+    /// 依存関係をクローンして新しいエンジンを作成
+    /// Cloneが重い場合は、Arc<App>を使用して共有することを推奨
+    pub fn create_processing_engine(
+        &self,
+    ) -> ProcessingEngine<L, H, S, DefaultProcessingConfig, ConsoleProgressReporter, MemoryHashPersistence>
+    where
+        L: Clone + 'static,
+        H: Clone + 'static,
+        S: Clone + 'static,
+    {
+        ProcessingEngine::new(
+            self.loader.clone(),
+            self.hasher.clone(),
+            self.storage.clone(),
+            DefaultProcessingConfig::default(),
+            ConsoleProgressReporter::new(),
+            MemoryHashPersistence::new(),
+        )
+    }
+
+
+    /// 静音版の並列処理エンジンを作成（バックグラウンド処理用）
+    pub fn create_quiet_processing_engine(
+        &self,
+    ) -> ProcessingEngine<L, H, S, DefaultProcessingConfig, NoOpProgressReporter, MemoryHashPersistence>
+    where
+        L: Clone + 'static,
+        H: Clone + 'static,
+        S: Clone + 'static,
+    {
+        ProcessingEngine::new(
+            self.loader.clone(),
+            self.hasher.clone(),
+            self.storage.clone(),
+            DefaultProcessingConfig::default(),
+            NoOpProgressReporter::new(),
+            MemoryHashPersistence::new(),
+        )
+    }
+
+    /// カスタム設定で並列処理エンジンを作成
+    pub fn create_custom_processing_engine<C, R, P>(
+        &self,
+        config: C,
+        reporter: R,
+        persistence: P,
+    ) -> ProcessingEngine<L, H, S, C, R, P>
+    where
+        L: Clone + 'static,
+        H: Clone + 'static,
+        S: Clone + 'static,
+        C: ProcessingConfig,
+        R: ProgressReporter + 'static,
+        P: HashPersistence + 'static,
+    {
+        ProcessingEngine::new(
+            self.loader.clone(),
+            self.hasher.clone(),
+            self.storage.clone(),
+            config,
+            reporter,
+            persistence,
+        )
+    }
+
+    /// 並列処理でディレクトリを処理（高レベル便利メソッド）
+    pub async fn run_parallel(&self, path: &str) -> anyhow::Result<processing::ProcessingSummary>
+    where
+        L: Clone + 'static,
+        H: Clone + 'static,
+        S: Clone + 'static,
+    {
+        let engine = self.create_processing_engine();
+        engine.process_directory(path).await
+    }
+
+    /// 静音並列処理でディレクトリを処理（バックグラウンド用）
+    pub async fn run_parallel_quiet(&self, path: &str) -> anyhow::Result<processing::ProcessingSummary>
+    where
+        L: Clone + 'static,
+        H: Clone + 'static,
+        S: Clone + 'static,
+    {
+        let engine = self.create_quiet_processing_engine();
+        engine.process_directory(path).await
     }
 }
 
@@ -100,5 +203,76 @@ mod tests {
 
         let result = app.run("test_path").await;
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_create_processing_engine() {
+        let app = App::new(
+            StandardImageLoader::new(),
+            AverageHasher::new(8),
+            crate::storage::local::LocalStorageBackend::new(),
+        );
+
+        let engine = app.create_processing_engine();
+        
+        // エンジンが正常に作成されることを確認
+        assert_eq!(engine.config().max_concurrent_tasks(), num_cpus::get().max(1) * 2);
+        assert!(engine.config().enable_progress_reporting());
+    }
+
+    #[test]
+    fn test_create_quiet_processing_engine() {
+        let app = App::new(
+            StandardImageLoader::new(),
+            AverageHasher::new(8),
+            crate::storage::local::LocalStorageBackend::new(),
+        );
+
+        let engine = app.create_quiet_processing_engine();
+        
+        // 静音エンジンが正常に作成されることを確認
+        assert_eq!(engine.config().max_concurrent_tasks(), num_cpus::get().max(1) * 2);
+        assert!(engine.config().enable_progress_reporting()); // 設定は有効だがNoOpReporterが静音
+    }
+
+    #[test]
+    fn test_create_custom_processing_engine() {
+        let app = App::new(
+            StandardImageLoader::new(),
+            AverageHasher::new(8),
+            crate::storage::local::LocalStorageBackend::new(),
+        );
+
+        let custom_config = DefaultProcessingConfig::default()
+            .with_max_concurrent(4)
+            .with_batch_size(10);
+        
+        let engine = app.create_custom_processing_engine(
+            custom_config,
+            ConsoleProgressReporter::quiet(),
+            MemoryHashPersistence::new(),
+        );
+
+        // カスタム設定が反映されることを確認
+        assert_eq!(engine.config().max_concurrent_tasks(), 4);
+        assert_eq!(engine.config().batch_size(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_run_parallel_quiet_empty_directory() {
+        let app = App::new(
+            StandardImageLoader::new(),
+            AverageHasher::new(8),
+            crate::storage::local::LocalStorageBackend::new(),
+        );
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let temp_path = temp_dir.path().to_str().unwrap();
+
+        let result = app.run_parallel_quiet(temp_path).await.unwrap();
+
+        assert_eq!(result.total_files, 0);
+        assert_eq!(result.processed_files, 0);
+        assert_eq!(result.error_count, 0);
     }
 }

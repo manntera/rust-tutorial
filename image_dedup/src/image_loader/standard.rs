@@ -6,6 +6,7 @@ use std::path::Path;
 use std::time::Instant;
 
 /// 標準的な画像ローダー実装
+#[derive(Clone)]
 pub struct StandardImageLoader {
     max_dimension: Option<u32>,
 }

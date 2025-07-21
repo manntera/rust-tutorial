@@ -8,6 +8,7 @@ use crate::{
 };
 use super::{
     ProcessingPipeline,
+    ProcessingEngine,
     traits::{ProcessingConfig, ProgressReporter, HashPersistence},
     types::ProcessingSummary,
     DefaultProcessingConfig,
@@ -47,8 +48,8 @@ pub async fn process_directory_with_config<L, H, S, C, R, P>(
     hasher: H,
     storage: S,
     config: &C,
-    reporter: Arc<R>,
-    persistence: Arc<P>,
+    reporter: R,
+    persistence: P,
 ) -> Result<ProcessingSummary>
 where
     L: ImageLoaderBackend + 'static,
@@ -61,7 +62,7 @@ where
     let files = discover_image_files(&storage, directory).await?;
     
     let pipeline = ProcessingPipeline::new(Arc::new(loader), Arc::new(hasher));
-    pipeline.execute(files, config, reporter, persistence).await
+    pipeline.execute(files, config, Arc::new(reporter), Arc::new(persistence)).await
 }
 
 /// ファイルリストを直接並列処理（ファイル発見済み）
@@ -70,8 +71,8 @@ pub async fn process_files_parallel<L, H, C, R, P>(
     loader: L,
     hasher: H,
     config: &C,
-    reporter: Arc<R>,
-    persistence: Arc<P>,
+    reporter: R,
+    persistence: P,
 ) -> Result<ProcessingSummary>
 where
     L: ImageLoaderBackend + 'static,
@@ -81,8 +82,98 @@ where
     P: HashPersistence + 'static,
 {
     let pipeline = ProcessingPipeline::new(Arc::new(loader), Arc::new(hasher));
-    pipeline.execute(files, config, reporter, persistence).await
+    pipeline.execute(files, config, Arc::new(reporter), Arc::new(persistence)).await
 }
+
+// ========================================
+// 新しいDI対応API - ProcessingEngineベース
+// ========================================
+
+/// 設定済みProcessingEngineでディレクトリを処理（DI推奨）
+/// 
+/// 全ての依存関係が事前注入されたエンジンを使用する真のDI API
+pub async fn process_directory_with_engine<L, H, S, C, R, P>(
+    directory: &str,
+    engine: &ProcessingEngine<L, H, S, C, R, P>,
+) -> Result<ProcessingSummary>
+where
+    L: ImageLoaderBackend + Clone + 'static,
+    H: PerceptualHashBackend + Clone + 'static,
+    S: StorageBackend + 'static,
+    C: ProcessingConfig,
+    R: ProgressReporter + Clone + 'static,
+    P: HashPersistence + Clone + 'static,
+{
+    engine.process_directory(directory).await
+}
+
+/// 設定済みProcessingEngineでファイルリストを処理（DI推奨）
+/// 
+/// ファイル発見を済ませた場合に使用する細かい制御用API
+pub async fn process_files_with_engine<L, H, S, C, R, P>(
+    files: Vec<String>,
+    engine: &ProcessingEngine<L, H, S, C, R, P>,
+) -> Result<ProcessingSummary>
+where
+    L: ImageLoaderBackend + Clone + 'static,
+    H: PerceptualHashBackend + Clone + 'static,
+    S: StorageBackend + 'static,
+    C: ProcessingConfig,
+    R: ProgressReporter + Clone + 'static,
+    P: HashPersistence + Clone + 'static,
+{
+    engine.process_files(files).await
+}
+
+/// ProcessingEngine作成のヘルパー関数
+/// 
+/// デフォルト設定での簡単なエンジン作成
+pub fn create_default_processing_engine<L, H, S>(
+    loader: L,
+    hasher: H,
+    storage: S,
+) -> ProcessingEngine<L, H, S, DefaultProcessingConfig, ConsoleProgressReporter, MemoryHashPersistence>
+where
+    L: ImageLoaderBackend + 'static,
+    H: PerceptualHashBackend + 'static,
+    S: StorageBackend + 'static,
+{
+    ProcessingEngine::new(
+        loader,
+        hasher,
+        storage,
+        DefaultProcessingConfig::default(),
+        ConsoleProgressReporter::new(),
+        MemoryHashPersistence::new(),
+    )
+}
+
+/// ProcessingEngine作成のヘルパー関数（静音版）
+/// 
+/// テストやバックグラウンド処理用の静音エンジン作成
+pub fn create_quiet_processing_engine<L, H, S>(
+    loader: L,
+    hasher: H,
+    storage: S,
+) -> ProcessingEngine<L, H, S, DefaultProcessingConfig, super::NoOpProgressReporter, MemoryHashPersistence>
+where
+    L: ImageLoaderBackend + 'static,
+    H: PerceptualHashBackend + 'static,
+    S: StorageBackend + 'static,
+{
+    ProcessingEngine::new(
+        loader,
+        hasher,
+        storage,
+        DefaultProcessingConfig::default(),
+        super::NoOpProgressReporter::new(),
+        MemoryHashPersistence::new(),
+    )
+}
+
+// ========================================
+// レガシーAPI - 後方互換性のため保持
+// ========================================
 
 /// ディレクトリから画像ファイルを発見（内部ヘルパー）
 async fn discover_image_files<S>(storage: &S, directory: &str) -> Result<Vec<String>>
@@ -158,8 +249,8 @@ mod tests {
         let loader = StandardImageLoader::new();
         let hasher = DCTHasher::new(8);
         let config = DefaultProcessingConfig::default();
-        let reporter = Arc::new(super::super::NoOpProgressReporter::new());
-        let persistence = Arc::new(MemoryHashPersistence::new());
+        let reporter = super::super::NoOpProgressReporter::new();
+        let persistence = MemoryHashPersistence::new();
         
         let result = process_files_parallel(
             files,
@@ -176,5 +267,77 @@ mod tests {
         
         // 結果がメモリに保存されていることを確認
         assert_eq!(persistence.stored_count(), 1);
+    }
+
+    // ========================================
+    // 新しいDI対応APIのテスト
+    // ========================================
+
+    #[tokio::test]
+    async fn test_process_directory_with_engine() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path().to_str().unwrap();
+
+        // テスト用画像作成
+        let (_temp_file, test_file) = create_test_png_file("test.png");
+        fs::copy(&test_file, temp_dir.path().join("test.png")).unwrap();
+
+        let engine = create_quiet_processing_engine(
+            StandardImageLoader::new(),
+            DCTHasher::new(8),
+            LocalStorageBackend::new(),
+        );
+
+        let result = process_directory_with_engine(temp_path, &engine).await.unwrap();
+
+        assert_eq!(result.total_files, 1);
+        assert_eq!(result.processed_files, 1);
+        assert_eq!(result.error_count, 0);
+
+        // 結果がエンジンの永続化に保存されていることを確認
+        assert_eq!(engine.persistence().stored_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_process_files_with_engine() {
+        let (_temp_dir, test_file) = create_test_png_file("test.png");
+        let files = vec![test_file.to_str().unwrap().to_string()];
+
+        let engine = create_quiet_processing_engine(
+            StandardImageLoader::new(),
+            DCTHasher::new(8),
+            LocalStorageBackend::new(),
+        );
+
+        let result = process_files_with_engine(files, &engine).await.unwrap();
+
+        assert_eq!(result.total_files, 1);
+        assert_eq!(result.processed_files, 1);
+        assert_eq!(result.error_count, 0);
+        assert_eq!(engine.persistence().stored_count(), 1);
+    }
+
+    #[test]
+    fn test_create_default_processing_engine() {
+        let engine = create_default_processing_engine(
+            StandardImageLoader::new(),
+            DCTHasher::new(8),
+            LocalStorageBackend::new(),
+        );
+
+        assert_eq!(engine.config().max_concurrent_tasks(), num_cpus::get().max(1) * 2);
+        assert!(engine.config().enable_progress_reporting());
+    }
+
+    #[test]
+    fn test_create_quiet_processing_engine() {
+        let engine = create_quiet_processing_engine(
+            StandardImageLoader::new(),
+            DCTHasher::new(8),
+            LocalStorageBackend::new(),
+        );
+
+        assert_eq!(engine.config().max_concurrent_tasks(), num_cpus::get().max(1) * 2);
+        assert!(engine.config().enable_progress_reporting()); // 設定は有効だが、NoOpReporterが静音
     }
 }

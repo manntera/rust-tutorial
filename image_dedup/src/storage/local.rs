@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use std::path::Path;
 
 /// ローカルファイルシステム用のストレージバックエンド
+#[derive(Clone)]
 pub struct LocalStorageBackend;
 
 impl Default for LocalStorageBackend {
