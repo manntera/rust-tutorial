@@ -1,7 +1,7 @@
 use super::{HashAlgorithm, HashResult, PerceptualHashBackend};
 use anyhow::Result;
 use async_trait::async_trait;
-use image::{DynamicImage, GenericImageView};
+use image::DynamicImage;
 use std::time::Instant;
 
 /// 平均値ベースの知覚ハッシュ実装

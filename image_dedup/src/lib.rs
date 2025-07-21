@@ -49,3 +49,55 @@ where
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::image_loader::standard::StandardImageLoader;
+    use crate::perceptual_hash::average_hash::AverageHasher;
+    use crate::storage::{MockStorageBackend, StorageItem};
+    use mockall::predicate::*;
+
+    #[tokio::test]
+    async fn test_run_with_mock_storage() {
+        let mut mock_storage = MockStorageBackend::new();
+
+        // `list_items`が呼ばれたときの振る舞いを定義
+        mock_storage
+            .expect_list_items()
+            .with(eq("test_path"))
+            .times(1)
+            .returning(|_| {
+                Ok(vec![
+                    StorageItem {
+                        id: "image1.jpg".to_string(),
+                        name: "image1.jpg".to_string(),
+                        size: 1024,
+                        is_directory: false,
+                        extension: Some("jpg".to_string()),
+                    },
+                    StorageItem {
+                        id: "not_an_image.txt".to_string(),
+                        name: "not_an_image.txt".to_string(),
+                        size: 100,
+                        is_directory: false,
+                        extension: Some("txt".to_string()),
+                    },
+                ])
+            });
+
+        // `is_image_file`が呼ばれたときの振る舞いを定義
+        mock_storage
+            .expect_is_image_file()
+            .returning(|item| matches!(item.extension.as_deref(), Some("jpg")));
+
+        let app = App::new(
+            StandardImageLoader::new(),
+            AverageHasher::new(8),
+            mock_storage,
+        );
+
+        let result = app.run("test_path").await;
+        assert!(result.is_ok());
+    }
+}

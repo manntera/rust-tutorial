@@ -1,7 +1,7 @@
 use super::{ImageLoaderBackend, LoadResult};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use image::{DynamicImage, GenericImageView, ImageFormat};
+use image::{DynamicImage, ImageFormat};
 use std::path::Path;
 use std::time::Instant;
 

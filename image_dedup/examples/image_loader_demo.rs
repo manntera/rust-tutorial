@@ -1,5 +1,4 @@
 use anyhow::Result;
-use image::GenericImageView;
 use image_dedup::image_loader::{ImageLoaderBackend, LoadResult, standard::StandardImageLoader};
 use std::path::Path;
 

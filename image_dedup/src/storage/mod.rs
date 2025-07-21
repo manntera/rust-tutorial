@@ -1,5 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use mockall::automock;
 
 pub mod local;
 
@@ -19,6 +20,7 @@ pub struct StorageItem {
 }
 
 /// ストレージバックエンドのトレイト
+#[automock]
 #[async_trait]
 pub trait StorageBackend: Send + Sync {
     /// ストレージ内のアイテムをリストする
