@@ -34,23 +34,13 @@ pub use data_persistence::MemoryHashPersistence;
 pub use parallel_execution::ProcessingEngine;
 pub use image_processing::process_single_file;
 
-// 内部API - 後方互換性のみ（直接使用非推奨）
-// ProcessingPipelineはProcessingEngine内部で使用されるため、
-// クレート外に公開はするが使用は推奨しない
-pub use parallel_execution::ProcessingPipeline;
 
 // 公開API - 高レベル便利関数
 pub use api::{
-    // レガシーAPI（後方互換性）
-    process_directory_parallel,
-    process_directory_with_config,
-    process_files_parallel,
-    // 新しいDI対応API
+    // DI対応API
     process_directory_with_engine,
     process_files_with_engine,
     create_default_processing_engine,
     create_quiet_processing_engine,
 };
 
-// 公開API - テストユーティリティ
-pub use tests::*;
