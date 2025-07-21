@@ -2,7 +2,6 @@ use super::{StorageBackend, StorageItem};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::path::Path;
-use walkdir::WalkDir;
 
 /// ローカルファイルシステム用のストレージバックエンド
 pub struct LocalStorageBackend;
@@ -44,6 +43,41 @@ impl LocalStorageBackend {
             extension,
         })
     }
+
+    /// 指定されたディレクトリ以下の全てのアイテムを再帰的に取得
+    pub async fn list_items_recursive(&self, prefix: &str) -> Result<Vec<StorageItem>> {
+        let path = Path::new(prefix);
+        let mut all_items = Vec::new();
+
+        self.list_items_recursive_internal(path, &mut all_items)
+            .await?;
+
+        Ok(all_items)
+    }
+
+    async fn list_items_recursive_internal(
+        &self,
+        path: &Path,
+        items: &mut Vec<StorageItem>,
+    ) -> Result<()> {
+        let mut entries = tokio::fs::read_dir(path)
+            .await
+            .with_context(|| format!("Failed to read directory: {}", path.display()))?;
+
+        while let Some(entry) = entries.next_entry().await? {
+            let entry_path = entry.path();
+            if let Ok(item) = Self::path_to_storage_item(&entry_path) {
+                items.push(item.clone());
+
+                // ディレクトリの場合は再帰的に処理
+                if item.is_directory {
+                    Box::pin(self.list_items_recursive_internal(&entry_path, items)).await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -52,13 +86,14 @@ impl StorageBackend for LocalStorageBackend {
         let path = Path::new(prefix);
         let mut items = Vec::new();
 
-        for entry in WalkDir::new(path) {
-            let entry = entry?;
+        // 非同期でディレクトリを読み込む
+        let mut entries = tokio::fs::read_dir(path)
+            .await
+            .with_context(|| format!("Failed to read directory: {prefix}"))?;
 
-            if let Ok(item) = Self::path_to_storage_item(entry.path()) {
-                if !item.is_directory && self.is_image_file(&item) {
-                    items.push(item);
-                }
+        while let Some(entry) = entries.next_entry().await? {
+            if let Ok(item) = Self::path_to_storage_item(&entry.path()) {
+                items.push(item);
             }
         }
 
@@ -112,9 +147,50 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(items.len(), 2);
+        assert_eq!(items.len(), 3); // 全てのファイルがリストされる
         assert!(items.iter().any(|i| i.name == "image1.jpg"));
         assert!(items.iter().any(|i| i.name == "image2.png"));
+        assert!(items.iter().any(|i| i.name == "document.txt"));
+
+        // 画像ファイルのみフィルタリング
+        let image_files: Vec<_> = items
+            .iter()
+            .filter(|item| backend.is_image_file(item))
+            .collect();
+        assert_eq!(image_files.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_list_items_recursive() {
+        let temp_dir = tempdir().unwrap();
+        let temp_path = temp_dir.path();
+
+        // サブディレクトリを作成
+        let sub_dir = temp_path.join("subdir");
+        std::fs::create_dir(&sub_dir).unwrap();
+
+        // ファイルを作成
+        std::fs::write(temp_path.join("root.jpg"), b"dummy").unwrap();
+        std::fs::write(sub_dir.join("nested.png"), b"dummy").unwrap();
+
+        let backend = LocalStorageBackend::new();
+        let items = backend
+            .list_items_recursive(temp_path.to_str().unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(items.len(), 3); // root.jpg + subdir + nested.png
+        assert!(
+            items
+                .iter()
+                .any(|i| i.name == "root.jpg" && !i.is_directory)
+        );
+        assert!(items.iter().any(|i| i.name == "subdir" && i.is_directory));
+        assert!(
+            items
+                .iter()
+                .any(|i| i.name == "nested.png" && !i.is_directory)
+        );
     }
 
     #[tokio::test]

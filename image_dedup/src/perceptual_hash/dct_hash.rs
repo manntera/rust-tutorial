@@ -35,15 +35,15 @@ impl PerceptualHashBackend for DCTHasher {
                     .preproc_dct()
                     .to_hasher();
 
-                
-
                 let rgb_image = image.to_rgb8();
                 let img_hash_image = img_hash::image::ImageBuffer::from_raw(
                     rgb_image.width(),
                     rgb_image.height(),
                     rgb_image.into_raw(),
-                ).unwrap();
-                let dynamic_img_hash_image = img_hash::image::DynamicImage::ImageRgb8(img_hash_image);
+                )
+                .unwrap();
+                let dynamic_img_hash_image =
+                    img_hash::image::DynamicImage::ImageRgb8(img_hash_image);
                 hasher.hash_image(&dynamic_img_hash_image)
             }
         })
