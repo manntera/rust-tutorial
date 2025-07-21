@@ -1,6 +1,6 @@
 use anyhow::Result;
 use image::GenericImageView;
-use image_dedup::{ImageLoadStrategy, ImageLoaderFactory};
+use image_dedup::image_loader::{ImageLoaderBackend, LoadResult, standard::StandardImageLoader};
 use std::path::Path;
 
 #[tokio::main]
@@ -12,31 +12,26 @@ async fn main() -> Result<()> {
 
     // 1. 標準的なローダー
     println!("1. 標準的なImageLoader:");
-    test_loader_strategy(&ImageLoadStrategy::Standard).await?;
+    let standard_loader = StandardImageLoader::new();
+    test_loader(&standard_loader).await?;
 
     println!();
 
     // 2. メモリ効率重視のローダー
     println!("2. メモリ効率重視のImageLoader（1024px制限）:");
-    test_loader_strategy(&ImageLoadStrategy::MemoryOptimized {
-        max_dimension: 1024,
-    })
-    .await?;
+    let memory_loader = StandardImageLoader::with_max_dimension(1024);
+    test_loader(&memory_loader).await?;
 
     println!();
 
     // 3. 小さいサイズ制限のローダー
     println!("3. 小さいサイズ制限のImageLoader（256px制限）:");
-    test_loader_strategy(&ImageLoadStrategy::MemoryOptimized { max_dimension: 256 }).await?;
+    let small_loader = StandardImageLoader::with_max_dimension(256);
+    test_loader(&small_loader).await?;
 
     println!();
 
-    // 4. 推奨戦略の例
-    demonstrate_recommended_strategies().await;
-
-    println!();
-
-    // 5. パフォーマンス比較
+    // 4. パフォーマンス比較
     performance_comparison().await?;
 
     // テストファイルのクリーンアップ
@@ -45,9 +40,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn test_loader_strategy(strategy: &ImageLoadStrategy) -> Result<()> {
-    let loader = ImageLoaderFactory::create(strategy).await?;
-
+async fn test_loader(loader: &impl ImageLoaderBackend) -> Result<()> {
     println!("  戦略: {}", loader.strategy_name());
     if let Some(max_pixels) = loader.max_supported_pixels() {
         println!("  最大ピクセル数: {max_pixels}");
@@ -93,42 +86,22 @@ async fn test_loader_strategy(strategy: &ImageLoadStrategy) -> Result<()> {
     Ok(())
 }
 
-async fn demonstrate_recommended_strategies() {
-    println!("4. システム推奨戦略:");
-
-    let memory_scenarios = [
-        (1.0, "低メモリ環境（1GB）"),
-        (4.0, "標準環境（4GB）"),
-        (16.0, "高メモリ環境（16GB）"),
-        (64.0, "サーバー環境（64GB）"),
-    ];
-
-    for (memory_gb, description) in memory_scenarios {
-        let strategy = ImageLoaderFactory::recommend_strategy(memory_gb);
-        println!("  {description}: {strategy:?}");
-    }
-}
-
 async fn performance_comparison() -> Result<()> {
-    println!("5. パフォーマンス比較:");
+    println!("4. パフォーマンス比較:");
 
-    let strategies = [
-        ImageLoadStrategy::Standard,
-        ImageLoadStrategy::MemoryOptimized {
-            max_dimension: 1024,
-        },
-        ImageLoadStrategy::MemoryOptimized { max_dimension: 512 },
+    let loaders: Vec<Box<dyn ImageLoaderBackend>> = vec![
+        Box::new(StandardImageLoader::new()),
+        Box::new(StandardImageLoader::with_max_dimension(1024)),
+        Box::new(StandardImageLoader::with_max_dimension(512)),
     ];
 
     let test_file = Path::new("./test_images_demo/large_2000x1500.png");
 
     if test_file.exists() {
-        for strategy in strategies {
-            let loader = ImageLoaderFactory::create(&strategy).await?;
-
+        for loader in loaders {
             // 3回測定して平均を取る
             let mut total_time = 0;
-            let mut results = Vec::new();
+            let mut results: Vec<LoadResult> = Vec::new();
 
             for _ in 0..3 {
                 let result = loader.load_from_path(test_file).await?;
@@ -192,26 +165,4 @@ async fn create_test_images() -> Result<()> {
     println!("  - 大: 2000x1500 (約 9MB)\n");
 
     Ok(())
-}
-
-// 将来的なGPU実装のデモンストレーション
-#[allow(dead_code)]
-async fn demonstrate_future_gpu_loading() {
-    println!("=== 将来的なGPU対応の例 ===");
-    println!("```rust");
-    println!("// GPU加速ローダーを使用する場合（将来実装予定）");
-    println!("let gpu_strategy = ImageLoadStrategy::GpuAccelerated;");
-    println!("let gpu_loader = ImageLoaderFactory::create(&gpu_strategy).await?;");
-    println!();
-    println!("// 大量の画像を並列処理");
-    println!("let results = futures::future::join_all(");
-    println!("    image_paths.iter().map(|path| gpu_loader.load_from_path(path))");
-    println!(").await;");
-    println!("```");
-
-    println!("\n将来的な拡張予定:");
-    println!("1. GPU加速による高速な画像変換");
-    println!("2. ストリーミング読み込み（大容量ファイル対応）");
-    println!("3. キャッシュ機能付きローダー");
-    println!("4. WebAssembly対応ローダー");
 }

@@ -1,3 +1,4 @@
+use image_dedup::storage::{StorageBackend, local::LocalStorageBackend};
 use std::sync::Arc;
 
 // Send + Syncを実装する型の例
@@ -80,12 +81,10 @@ async fn demonstrate_sync() {
 
 // StorageBackend での実際の使用例
 async fn demonstrate_storage_usage() {
-    use image_dedup::storage::{StorageFactory, StorageType};
-
     println!("3. StorageBackend での使用例:");
 
     // StorageBackendはSend + Syncなので以下が可能
-    let storage = StorageFactory::create(&StorageType::Local).await.unwrap();
+    let storage: Box<dyn StorageBackend> = Box::new(LocalStorageBackend::new());
     let shared_storage = Arc::new(storage);
 
     // 複数のタスクで同じストレージを使用
@@ -94,13 +93,13 @@ async fn demonstrate_storage_usage() {
 
     let task1 = tokio::spawn(async move {
         // 別のタスクでストレージを使用（Send）
-        let items = storage1.list_items("./test_images").await.unwrap();
+        let items = storage1.list_items(".").await.unwrap();
         items.len()
     });
 
     let task2 = tokio::spawn(async move {
         // 同時に別のタスクでも使用（Sync）
-        let exists = storage2.exists("./test_images/sample1.jpg").await.unwrap();
+        let exists = storage2.exists("Cargo.toml").await.unwrap();
         if exists { 1 } else { 0 }
     });
 
@@ -110,27 +109,4 @@ async fn demonstrate_storage_usage() {
         "  タスク2: ファイル存在確認 = {}",
         exists_flag.unwrap() == 1
     );
-}
-
-// コンパイルエラーの例（コメントアウト）
-#[allow(dead_code)]
-fn demonstrate_compile_errors() {
-    // これらのコードはコンパイルエラーになる例
-
-    /*
-    // Send でない型を別スレッドに送ろうとする例
-    let rc_data = std::rc::Rc::new(42);
-    std::thread::spawn(move || {
-        println!("{}", rc_data); // エラー: Rc<i32> is not Send
-    });
-
-    // Sync でない型の参照を別スレッドで共有しようとする例
-    let cell_data = std::cell::RefCell::new(42);
-    let cell_ref = &cell_data;
-    std::thread::spawn(move || {
-        println!("{:?}", cell_ref); // エラー: RefCell<i32> is not Sync
-    });
-    */
-
-    println!("上記のコードはコンパイルエラーになる例です（コメントアウト済み）");
 }

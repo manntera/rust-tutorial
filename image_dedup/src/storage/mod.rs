@@ -2,7 +2,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 
 pub mod local;
-// 将来的に: pub mod s3;
 
 /// ストレージ内のアイテムを表す構造体
 #[derive(Debug, Clone)]
@@ -48,32 +47,6 @@ pub trait StorageBackend: Send + Sync {
             )
         } else {
             false
-        }
-    }
-}
-
-/// ストレージタイプの列挙型
-#[derive(Debug, Clone)]
-pub enum StorageType {
-    Local,
-    S3 { bucket: String, region: String },
-}
-
-/// ストレージファクトリ
-pub struct StorageFactory;
-
-impl StorageFactory {
-    /// 指定されたタイプのストレージバックエンドを作成
-    pub async fn create(storage_type: &StorageType) -> Result<Box<dyn StorageBackend>> {
-        match storage_type {
-            StorageType::Local => Ok(Box::new(local::LocalStorageBackend::new())),
-            StorageType::S3 {
-                bucket: _,
-                region: _,
-            } => {
-                // 将来的に実装
-                anyhow::bail!("S3 storage backend is not implemented yet")
-            }
         }
     }
 }

@@ -1,6 +1,10 @@
 use anyhow::Result;
 use image::{ImageBuffer, RgbImage};
-use image_dedup::{HashAlgorithm, HashStrategy, PerceptualHashFactory};
+use image_dedup::perceptual_hash::{
+    PerceptualHashBackend,
+    average_hash::{AverageHasher, DifferenceHasher},
+    dct_hash::DCTHasher,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,11 +25,6 @@ async fn main() -> Result<()> {
 
     // 3. パフォーマンス比較
     performance_comparison(&test_images).await?;
-
-    println!();
-
-    // 4. 推奨設定のデモ
-    demonstrate_recommendations().await;
 
     Ok(())
 }
@@ -75,16 +74,15 @@ fn create_test_images() -> Vec<image::DynamicImage> {
 async fn compare_algorithms(test_images: &[image::DynamicImage]) -> Result<()> {
     println!("1. 異なるアルゴリズムの比較:");
 
-    let algorithms = [
-        HashAlgorithm::DCT { size: 8 },
-        HashAlgorithm::Average { size: 8 },
-        HashAlgorithm::Difference { size: 8 },
+    let hashers: Vec<Box<dyn PerceptualHashBackend>> = vec![
+        Box::new(DCTHasher::new(8)),
+        Box::new(AverageHasher::new(8)),
+        Box::new(DifferenceHasher::new(8)),
     ];
 
-    for algorithm in &algorithms {
-        println!("\n  {}:", get_algorithm_description(algorithm));
+    for hasher in &hashers {
+        println!("\n  {}:", hasher.algorithm_name());
 
-        let hasher = PerceptualHashFactory::create(algorithm).await?;
         println!("    計算複雑度: {}/10", hasher.computational_complexity());
         println!("    推奨閾値: {}", hasher.recommended_threshold());
 
@@ -116,8 +114,7 @@ async fn compare_hash_sizes(test_image: &image::DynamicImage) -> Result<()> {
     let sizes = [8, 16, 32];
 
     for size in sizes {
-        let algorithm = HashAlgorithm::DCT { size };
-        let hasher = PerceptualHashFactory::create(&algorithm).await?;
+        let hasher = DCTHasher::new(size);
 
         let hash = hasher.generate_hash(test_image).await?;
 
@@ -134,15 +131,14 @@ async fn compare_hash_sizes(test_image: &image::DynamicImage) -> Result<()> {
 async fn performance_comparison(test_images: &[image::DynamicImage]) -> Result<()> {
     println!("3. パフォーマンス比較 ({} 画像):", test_images.len());
 
-    let algorithms = [
-        HashAlgorithm::Average { size: 8 },
-        HashAlgorithm::Difference { size: 8 },
-        HashAlgorithm::DCT { size: 8 },
-        HashAlgorithm::DCT { size: 16 },
+    let hashers: Vec<Box<dyn PerceptualHashBackend>> = vec![
+        Box::new(AverageHasher::new(8)),
+        Box::new(DifferenceHasher::new(8)),
+        Box::new(DCTHasher::new(8)),
+        Box::new(DCTHasher::new(16)),
     ];
 
-    for algorithm in &algorithms {
-        let hasher = PerceptualHashFactory::create(algorithm).await?;
+    for hasher in &hashers {
         let mut total_time = 0u64;
         let mut hashes = Vec::new();
 
@@ -169,7 +165,7 @@ async fn performance_comparison(test_images: &[image::DynamicImage]) -> Result<(
             }
         }
 
-        println!("  {}:", get_algorithm_description(algorithm));
+        println!("  {}:", hasher.algorithm_name());
         println!("    総計算時間: {}ms", total_time);
         println!(
             "    平均計算時間: {}ms",
@@ -179,61 +175,4 @@ async fn performance_comparison(test_images: &[image::DynamicImage]) -> Result<(
     }
 
     Ok(())
-}
-
-async fn demonstrate_recommendations() {
-    println!("4. 推奨設定のデモ:");
-
-    println!("\n  用途別推奨アルゴリズム:");
-
-    let speed_strategy = HashStrategy {
-        algorithm: HashAlgorithm::Average { size: 8 },
-        priority_speed: true,
-        priority_accuracy: false,
-    };
-    let speed_rec = PerceptualHashFactory::recommend_algorithm(&speed_strategy);
-    println!("    高速処理重視: {:?}", speed_rec);
-
-    let accuracy_strategy = HashStrategy {
-        algorithm: HashAlgorithm::DCT { size: 16 },
-        priority_speed: false,
-        priority_accuracy: true,
-    };
-    let accuracy_rec = PerceptualHashFactory::recommend_algorithm(&accuracy_strategy);
-    println!("    高精度重視: {:?}", accuracy_rec);
-
-    let balanced_strategy = HashStrategy {
-        algorithm: HashAlgorithm::DCT { size: 8 },
-        priority_speed: true,
-        priority_accuracy: true,
-    };
-    let balanced_rec = PerceptualHashFactory::recommend_algorithm(&balanced_strategy);
-    println!("    バランス重視: {:?}", balanced_rec);
-
-    println!("\n  画像サイズ別推奨ハッシュサイズ:");
-    let image_sizes = [(128, 128), (512, 512), (2048, 2048), (8192, 8192)];
-
-    for (width, height) in image_sizes {
-        let recommended_size = PerceptualHashFactory::recommend_hash_size(width, height);
-        println!(
-            "    {}x{} 画像 → {}x{} ハッシュ",
-            width, height, recommended_size, recommended_size
-        );
-    }
-
-    println!("\n  将来的な拡張予定:");
-    println!("    - Wavelet Hash: 周波数解析ベース");
-    println!("    - Block Hash: ブロック分割ベース");
-    println!("    - Neural Hash: 機械学習ベース");
-    println!("    - GPU加速: 並列計算による高速化");
-}
-
-fn get_algorithm_description(algorithm: &HashAlgorithm) -> &'static str {
-    match algorithm {
-        HashAlgorithm::DCT { .. } => "DCT Hash",
-        HashAlgorithm::Average { .. } => "Average Hash",
-        HashAlgorithm::Difference { .. } => "Difference Hash",
-        HashAlgorithm::Wavelet { .. } => "Wavelet Hash",
-        HashAlgorithm::Block { .. } => "Block Hash",
-    }
 }

@@ -5,8 +5,6 @@ use std::fmt;
 
 pub mod average_hash;
 pub mod dct_hash;
-// 将来的に: pub mod wavelet_hash;
-// 将来的に: pub mod block_hash;
 
 /// ハッシュアルゴリズムの種類
 #[derive(Debug, Clone, PartialEq)]
@@ -17,10 +15,6 @@ pub enum HashAlgorithm {
     Average { size: u32 },
     /// 差分ベースのハッシュ（エッジ検出に有効）
     Difference { size: u32 },
-    /// ウェーブレットベースのハッシュ（将来実装予定）
-    Wavelet { size: u32 },
-    /// ブロックベースのハッシュ（将来実装予定）
-    Block { size: u32 },
 }
 
 /// ハッシュ計算の結果
@@ -99,8 +93,6 @@ pub trait PerceptualHashBackend: Send + Sync {
             HashAlgorithm::DCT { size } => size / 4,
             HashAlgorithm::Average { size } => size / 8,
             HashAlgorithm::Difference { size } => size / 6,
-            HashAlgorithm::Wavelet { size } => size / 5,
-            HashAlgorithm::Block { size } => size / 3,
         }
     }
 
@@ -110,65 +102,6 @@ pub trait PerceptualHashBackend: Send + Sync {
             HashAlgorithm::Average { .. } => 2,
             HashAlgorithm::Difference { .. } => 3,
             HashAlgorithm::DCT { .. } => 7,
-            HashAlgorithm::Wavelet { .. } => 8,
-            HashAlgorithm::Block { .. } => 5,
-        }
-    }
-}
-
-/// ハッシュ戦略の選択基準
-#[derive(Debug, Clone)]
-pub struct HashStrategy {
-    pub algorithm: HashAlgorithm,
-    pub priority_speed: bool,    // 速度を優先するか
-    pub priority_accuracy: bool, // 精度を優先するか
-}
-
-/// 知覚ハッシュファクトリ
-pub struct PerceptualHashFactory;
-
-impl PerceptualHashFactory {
-    /// 指定されたアルゴリズムでハッシュ計算器を作成
-    pub async fn create(algorithm: &HashAlgorithm) -> Result<Box<dyn PerceptualHashBackend>> {
-        match algorithm {
-            HashAlgorithm::DCT { size } => Ok(Box::new(dct_hash::DCTHasher::new(*size))),
-            HashAlgorithm::Average { size } => {
-                Ok(Box::new(average_hash::AverageHasher::new(*size)))
-            }
-            HashAlgorithm::Difference { size } => {
-                Ok(Box::new(average_hash::DifferenceHasher::new(*size)))
-            }
-            HashAlgorithm::Wavelet { .. } => {
-                anyhow::bail!("Wavelet hash is not implemented yet")
-            }
-            HashAlgorithm::Block { .. } => {
-                anyhow::bail!("Block hash is not implemented yet")
-            }
-        }
-    }
-
-    /// 用途に応じて最適なアルゴリズムを推奨
-    pub fn recommend_algorithm(strategy: &HashStrategy) -> HashAlgorithm {
-        match (strategy.priority_speed, strategy.priority_accuracy) {
-            (true, false) => HashAlgorithm::Average { size: 8 },
-            (false, true) => HashAlgorithm::DCT { size: 16 },
-            (true, true) => HashAlgorithm::DCT { size: 8 },
-            (false, false) => HashAlgorithm::DCT { size: 8 }, // デフォルト
-        }
-    }
-
-    /// 画像サイズに応じて適切なハッシュサイズを推奨
-    pub fn recommend_hash_size(image_width: u32, image_height: u32) -> u32 {
-        let max_dimension = image_width.max(image_height);
-
-        if max_dimension < 256 {
-            8
-        } else if max_dimension < 1024 {
-            16
-        } else if max_dimension < 4096 {
-            32
-        } else {
-            64
         }
     }
 }
@@ -202,4 +135,3 @@ impl ComparisonResult {
         }
     }
 }
-

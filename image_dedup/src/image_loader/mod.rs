@@ -4,19 +4,6 @@ use image::DynamicImage;
 use std::path::Path;
 
 pub mod standard;
-// 将来的に: pub mod gpu_accelerated;
-// 将来的に: pub mod memory_optimized;
-
-/// 画像の読み込み方法を表す列挙型
-#[derive(Debug, Clone)]
-pub enum ImageLoadStrategy {
-    /// 標準的な画像読み込み（image crateを直接使用）
-    Standard,
-    /// メモリ効率を重視した読み込み（大きな画像対応）
-    MemoryOptimized { max_dimension: u32 },
-    /// GPU加速読み込み（将来実装予定）
-    GpuAccelerated,
-}
 
 /// 画像読み込みの結果情報
 #[derive(Debug, Clone)]
@@ -58,37 +45,3 @@ pub trait ImageLoaderBackend: Send + Sync {
         width as u64 * height as u64 * 4
     }
 }
-
-/// 画像ローダーファクトリ
-pub struct ImageLoaderFactory;
-
-impl ImageLoaderFactory {
-    /// 指定された戦略で画像ローダーを作成
-    pub async fn create(strategy: &ImageLoadStrategy) -> Result<Box<dyn ImageLoaderBackend>> {
-        match strategy {
-            ImageLoadStrategy::Standard => Ok(Box::new(standard::StandardImageLoader::new())),
-            ImageLoadStrategy::MemoryOptimized { max_dimension } => Ok(Box::new(
-                standard::StandardImageLoader::with_max_dimension(*max_dimension),
-            )),
-            ImageLoadStrategy::GpuAccelerated => {
-                anyhow::bail!("GPU accelerated image loading is not implemented yet")
-            }
-        }
-    }
-
-    /// システムのメモリ状況に応じて最適な戦略を選択
-    pub fn recommend_strategy(available_memory_gb: f64) -> ImageLoadStrategy {
-        if available_memory_gb < 2.0 {
-            ImageLoadStrategy::MemoryOptimized {
-                max_dimension: 2048,
-            }
-        } else if available_memory_gb < 8.0 {
-            ImageLoadStrategy::MemoryOptimized {
-                max_dimension: 4096,
-            }
-        } else {
-            ImageLoadStrategy::Standard
-        }
-    }
-}
-
