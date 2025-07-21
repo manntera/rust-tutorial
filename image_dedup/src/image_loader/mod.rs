@@ -92,19 +92,3 @@ impl ImageLoaderFactory {
     }
 }
 
-/// 旧来のAPIとの互換性のためのラッパー（非推奨）
-#[deprecated(note = "Use ImageLoaderFactory and ImageLoaderBackend instead")]
-pub struct ImageLoader;
-
-#[allow(deprecated)]
-impl ImageLoader {
-    pub fn load_image(path: &Path) -> Result<DynamicImage> {
-        let img = image::open(path)?;
-        Ok(img)
-    }
-
-    pub fn get_image_dimensions(image: &DynamicImage) -> (u32, u32) {
-        use image::GenericImageView;
-        (image.width(), image.height())
-    }
-}
