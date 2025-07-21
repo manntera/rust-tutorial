@@ -7,7 +7,8 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-/// メモリ内保存の永続化実装（テスト用）
+/// メモリ内保存の永続化実装（テスト用および開発用）
+/// モックテストにも使用可能な完全機能実装
 #[derive(Debug, Clone)]
 pub struct MemoryHashPersistence {
     storage: Arc<Mutex<HashMap<String, (String, ProcessingMetadata)>>>,
@@ -42,6 +43,16 @@ impl MemoryHashPersistence {
     pub fn clear(&self) {
         self.storage.lock().unwrap().clear();
         *self.finalized.lock().unwrap() = false;
+    }
+    
+    /// テスト用：特定のファイルが保存されているかチェック
+    pub fn contains_file(&self, file_path: &str) -> bool {
+        self.storage.lock().unwrap().contains_key(file_path)
+    }
+    
+    /// テスト用：保存されたファイル数を取得
+    pub fn stored_count(&self) -> usize {
+        self.storage.lock().unwrap().len()
     }
 }
 

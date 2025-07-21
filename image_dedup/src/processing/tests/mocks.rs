@@ -1,11 +1,10 @@
 // テスト用のモック実装
 // 各トレイトのテスト用モック実装を提供
 
-use super::super::traits::{ProcessingConfig, ProgressReporter, HashPersistence, ParallelProcessor};
-use super::super::types::{ProcessingMetadata, ProcessingSummary};
+use super::super::traits::{ProcessingConfig, ProgressReporter, ParallelProcessor};
+use super::super::types::ProcessingSummary;
 use async_trait::async_trait;
 use anyhow::Result;
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 // ProcessingConfig のモック実装
@@ -59,44 +58,8 @@ impl ProgressReporter for MockProgressReporter {
     }
 }
 
-// HashPersistence のモック実装
-#[derive(Default)]
-pub struct MockHashPersistence {
-    pub storage: Arc<Mutex<HashMap<String, (String, ProcessingMetadata)>>>,
-    pub finalized: Arc<Mutex<bool>>,
-}
-
-#[async_trait]
-impl HashPersistence for MockHashPersistence {
-    async fn store_hash(
-        &self,
-        file_path: &str,
-        hash: &str,
-        metadata: &ProcessingMetadata,
-    ) -> Result<()> {
-        self.storage
-            .lock()
-            .unwrap()
-            .insert(file_path.to_string(), (hash.to_string(), metadata.clone()));
-        Ok(())
-    }
-    
-    async fn store_batch(
-        &self,
-        results: &[(String, String, ProcessingMetadata)],
-    ) -> Result<()> {
-        let mut storage = self.storage.lock().unwrap();
-        for (path, hash, metadata) in results {
-            storage.insert(path.clone(), (hash.clone(), metadata.clone()));
-        }
-        Ok(())
-    }
-    
-    async fn finalize(&self) -> Result<()> {
-        *self.finalized.lock().unwrap() = true;
-        Ok(())
-    }
-}
+// HashPersistence のモック実装 (統合された MemoryHashPersistence を使用)
+pub use super::super::data_persistence::implementations::MemoryHashPersistence as MockHashPersistence;
 
 // ParallelProcessor のモック実装
 pub struct MockParallelProcessor;
@@ -191,6 +154,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_hash_persistence_trait() {
+        use crate::processing::types::ProcessingMetadata;
+        use crate::processing::traits::HashPersistence;
+        
         let persistence = MockHashPersistence::default();
         let metadata = ProcessingMetadata {
             file_size: 1024,
@@ -212,17 +178,19 @@ mod tests {
         // 完了処理テスト
         persistence.finalize().await.unwrap();
         
-        let storage = persistence.storage.lock().unwrap();
-        assert_eq!(storage.len(), 3);
-        assert!(storage.contains_key("/test1.jpg"));
-        assert!(storage.contains_key("/test2.jpg"));
-        assert!(storage.contains_key("/test3.jpg"));
+        // 統合された MemoryHashPersistence のメソッドを使用
+        assert_eq!(persistence.stored_count(), 3);
+        assert!(persistence.contains_file("/test1.jpg"));
+        assert!(persistence.contains_file("/test2.jpg"));
+        assert!(persistence.contains_file("/test3.jpg"));
         
-        assert!(*persistence.finalized.lock().unwrap());
+        assert!(persistence.is_finalized());
     }
 
     #[test]
     fn test_hash_persistence_thread_safety() {
+        use crate::processing::traits::HashPersistence;
+        
         let persistence = MockHashPersistence::default();
         let persistence_ref: &dyn HashPersistence = &persistence;
         
