@@ -5,6 +5,7 @@
 pub mod types;                  // データ構造定義
 pub mod traits;                 // トレイト定義
 pub mod tests;                  // テストユーティリティ
+pub mod api;                    // 高レベル公開API
 
 // 機能別モジュール
 pub mod image_processing;       // 画像処理機能
@@ -30,8 +31,15 @@ pub use progress_monitoring::{ConsoleProgressReporter, NoOpProgressReporter};
 pub use data_persistence::MemoryHashPersistence;
 
 // 公開API - コア機能
-pub use parallel_execution::{ParallelProcessingEngine, ProcessingPipeline};
+pub use parallel_execution::ProcessingPipeline;
 pub use image_processing::process_single_file;
+
+// 公開API - 高レベル便利関数
+pub use api::{
+    process_directory_parallel,
+    process_directory_with_config,
+    process_files_parallel,
+};
 
 // 公開API - テストユーティリティ
 pub use tests::*;
