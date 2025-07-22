@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use image_dedup::cli::{Cli, Commands};
-use image_dedup::commands;
+use image_dedup::cli::commands;
 
 #[tokio::main]
 async fn main() -> Result<()> {

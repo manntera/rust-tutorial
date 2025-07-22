@@ -26,13 +26,18 @@ async fn main() -> Result<()> {
         .into_iter()
         .filter(|item| storage.is_image_file(item))
         .collect();
-    println!("見つかった画像: {} 個\n", items.len());
+    let items_count = items.len();
+    println!("見つかった画像: {items_count} 個\n");
 
     // 各画像の情報を表示
     for (i, item) in items.iter().enumerate() {
-        println!("{}. {}", i + 1, item.name);
-        println!("   ID: {}", item.id);
-        println!("   サイズ: {} bytes", item.size);
+        let item_num = i + 1;
+        let item_name = &item.name;
+        println!("{item_num}. {item_name}");
+        let item_id = &item.id;
+        println!("   ID: {item_id}");
+        let item_size = item.size;
+        println!("   サイズ: {item_size} bytes");
         println!("   拡張子: {:?}", item.extension);
     }
 
@@ -50,7 +55,8 @@ async fn main() -> Result<()> {
         let hasher = DCTHasher::new(8);
         let hash = hasher.generate_hash(&image).await?;
 
-        println!("ハッシュ値: {}", hash.to_base64());
+        let hash_value = hash.to_base64();
+        println!("ハッシュ値: {hash_value}");
     }
 
     // クリーンアップ

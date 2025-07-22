@@ -40,7 +40,8 @@ async fn main() -> Result<()> {
 }
 
 async fn test_loader(loader: &impl ImageLoaderBackend) -> Result<()> {
-    println!("  戦略: {}", loader.strategy_name());
+    let strategy_name = loader.strategy_name();
+    println!("  戦略: {strategy_name}");
     if let Some(max_pixels) = loader.max_supported_pixels() {
         println!("  最大ピクセル数: {max_pixels}");
     }

@@ -94,7 +94,7 @@ async fn compare_algorithms(test_images: &[image::DynamicImage]) -> Result<()> {
         let is_similar = hasher.are_similar(&hash1, &hash2, hasher.recommended_threshold())?;
 
         println!("    グラデーション vs チェッカーボード:");
-        println!("      距離: {}", distance);
+        println!("      距離: {distance}");
         println!(
             "      類似判定: {}",
             if is_similar { "類似" } else { "非類似" }
@@ -118,7 +118,7 @@ async fn compare_hash_sizes(test_image: &image::DynamicImage) -> Result<()> {
 
         let hash = hasher.generate_hash(test_image).await?;
 
-        println!("  {}x{} ハッシュ:", size, size);
+        println!("  {size}x{size} ハッシュ:");
         println!("    ビット数: {}", hash.hash_size_bits);
         println!("    計算時間: {}ms", hash.computation_time_ms);
         println!("    推奨閾値: {}", hasher.recommended_threshold());
@@ -166,12 +166,12 @@ async fn performance_comparison(test_images: &[image::DynamicImage]) -> Result<(
         }
 
         println!("  {}:", hasher.algorithm_name());
-        println!("    総計算時間: {}ms", total_time);
+        println!("    総計算時間: {total_time}ms");
         println!(
             "    平均計算時間: {}ms",
             total_time / test_images.len() as u64
         );
-        println!("    類似ペア: {}/{} 組", similar_pairs, comparisons);
+        println!("    類似ペア: {similar_pairs}/{comparisons} 組");
     }
 
     Ok(())

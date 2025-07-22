@@ -210,7 +210,7 @@ mod tests {
             source_dimensions: (200, 200),
         };
 
-        let display_str = format!("{}", hash_result);
+        let display_str = format!("{hash_result}");
         assert!(display_str.contains("DCT"));
         assert!(display_str.contains("16 bits"));
         assert!(display_str.contains("25ms"));

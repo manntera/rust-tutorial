@@ -75,8 +75,10 @@ async fn demonstrate_sync() {
     });
 
     let (result1, result2) = tokio::join!(task1, task2);
-    println!("  タスク1の結果: {}", result1.unwrap());
-    println!("  タスク2の結果: {}", result2.unwrap());
+    let result1_value = result1.unwrap();
+    println!("  タスク1の結果: {result1_value}");
+    let result2_value = result2.unwrap();
+    println!("  タスク2の結果: {result2_value}");
 }
 
 // StorageBackend での実際の使用例
@@ -104,7 +106,8 @@ async fn demonstrate_storage_usage() {
     });
 
     let (count, exists_flag) = tokio::join!(task1, task2);
-    println!("  タスク1: {} 個のファイルを発見", count.unwrap());
+    let count_value = count.unwrap();
+    println!("  タスク1: {count_value} 個のファイルを発見");
     println!(
         "  タスク2: ファイル存在確認 = {}",
         exists_flag.unwrap() == 1
