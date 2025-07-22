@@ -84,21 +84,7 @@ impl LocalStorageBackend {
 #[async_trait]
 impl StorageBackend for LocalStorageBackend {
     async fn list_items(&self, prefix: &str) -> Result<Vec<StorageItem>> {
-        let path = Path::new(prefix);
-        let mut items = Vec::new();
-
-        // 非同期でディレクトリを読み込む
-        let mut entries = tokio::fs::read_dir(path)
-            .await
-            .with_context(|| format!("Failed to read directory: {prefix}"))?;
-
-        while let Some(entry) = entries.next_entry().await? {
-            if let Ok(item) = Self::path_to_storage_item(&entry.path()) {
-                items.push(item);
-            }
-        }
-
-        Ok(items)
+        self.list_items_recursive(prefix).await
     }
 
     async fn read_item(&self, id: &str) -> Result<Vec<u8>> {
