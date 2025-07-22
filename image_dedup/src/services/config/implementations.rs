@@ -12,8 +12,13 @@ pub struct DefaultProcessingConfig {
 }
 
 impl DefaultProcessingConfig {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(cpu_count: usize) -> Self {
+        Self {
+            max_concurrent: cpu_count.max(1) * 2,
+            buffer_size: 100,
+            batch_size: 50,
+            enable_progress: true,
+        }
     }
     
     pub fn with_max_concurrent(mut self, max_concurrent: usize) -> Self {
@@ -82,7 +87,7 @@ mod tests {
     
     #[test]
     fn test_processing_config_builder() {
-        let config = DefaultProcessingConfig::new()
+        let config = DefaultProcessingConfig::new(4)
             .with_max_concurrent(8)
             .with_buffer_size(200)
             .with_batch_size(100)

@@ -57,6 +57,7 @@ pub fn create_default_processing_engine<L, H, S>(
     loader: L,
     hasher: H,
     storage: S,
+    cpu_count: usize,
 ) -> ProcessingEngine<L, H, S, DefaultProcessingConfig, ConsoleProgressReporter, MemoryHashPersistence>
 where
     L: ImageLoaderBackend + 'static,
@@ -67,7 +68,7 @@ where
         loader,
         hasher,
         storage,
-        DefaultProcessingConfig::default(),
+        DefaultProcessingConfig::new(cpu_count),
         ConsoleProgressReporter::new(),
         MemoryHashPersistence::new(),
     )
@@ -80,6 +81,7 @@ pub fn create_quiet_processing_engine<L, H, S>(
     loader: L,
     hasher: H,
     storage: S,
+    cpu_count: usize,
 ) -> ProcessingEngine<L, H, S, DefaultProcessingConfig, NoOpProgressReporter, MemoryHashPersistence>
 where
     L: ImageLoaderBackend + 'static,
@@ -90,7 +92,7 @@ where
         loader,
         hasher,
         storage,
-        DefaultProcessingConfig::default(),
+        DefaultProcessingConfig::new(cpu_count),
         NoOpProgressReporter::new(),
         MemoryHashPersistence::new(),
     )
@@ -142,6 +144,7 @@ mod tests {
             StandardImageLoader::new(),
             DCTHasher::new(8),
             LocalStorageBackend::new(),
+            1,
         );
 
         let result = process_directory_with_engine(temp_path, &engine).await.unwrap();
@@ -163,6 +166,7 @@ mod tests {
             StandardImageLoader::new(),
             DCTHasher::new(8),
             LocalStorageBackend::new(),
+            1,
         );
 
         let result = process_files_with_engine(files, &engine).await.unwrap();
@@ -179,9 +183,10 @@ mod tests {
             StandardImageLoader::new(),
             DCTHasher::new(8),
             LocalStorageBackend::new(),
+            4,
         );
 
-        assert_eq!(engine.config().max_concurrent_tasks(), num_cpus::get().max(1) * 2);
+        assert_eq!(engine.config().max_concurrent_tasks(), 8);
         assert!(engine.config().enable_progress_reporting());
     }
 
@@ -191,9 +196,10 @@ mod tests {
             StandardImageLoader::new(),
             DCTHasher::new(8),
             LocalStorageBackend::new(),
+            4,
         );
 
-        assert_eq!(engine.config().max_concurrent_tasks(), num_cpus::get().max(1) * 2);
+        assert_eq!(engine.config().max_concurrent_tasks(), 8);
         assert!(engine.config().enable_progress_reporting()); // 設定は有効だが、NoOpReporterが静音
     }
 }

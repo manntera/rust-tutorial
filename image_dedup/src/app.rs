@@ -73,6 +73,7 @@ where
             self.loader.clone(),
             self.hasher.clone(),
             self.storage.clone(),
+            num_cpus::get(),
         )
     }
 
@@ -89,6 +90,7 @@ where
             self.loader.clone(),
             self.hasher.clone(),
             self.storage.clone(),
+            num_cpus::get(),
         )
     }
 
@@ -231,7 +233,7 @@ mod tests {
             crate::storage::local::LocalStorageBackend::new(),
         );
 
-        let custom_config = DefaultProcessingConfig::default()
+        let custom_config = DefaultProcessingConfig::new(4)
             .with_max_concurrent(4)
             .with_batch_size(10);
         
