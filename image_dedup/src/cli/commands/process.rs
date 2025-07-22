@@ -1,10 +1,10 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::fs;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use crate::cli::ProcessAction;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct DuplicatesReport {
     total_groups: usize,
     total_duplicates: usize,
@@ -13,13 +13,13 @@ struct DuplicatesReport {
     groups: Vec<DuplicateGroup>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct DuplicateGroup {
     group_id: usize,
     files: Vec<DuplicateFile>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct DuplicateFile {
     path: String,
     #[allow(dead_code)]
@@ -155,6 +155,17 @@ pub async fn execute_process(
 mod tests {
     use super::*;
     use tempfile::TempDir;
+    use std::fs;
+
+    fn create_test_duplicate_report(groups: Vec<DuplicateGroup>) -> String {
+        let report = DuplicatesReport {
+            total_groups: groups.len(),
+            total_duplicates: groups.iter().map(|g| g.files.len().saturating_sub(1)).sum(),
+            threshold: 5,
+            groups,
+        };
+        serde_json::to_string_pretty(&report).unwrap()
+    }
 
     #[tokio::test]
     async fn test_process_nonexistent_duplicate_list() {
@@ -173,15 +184,228 @@ mod tests {
         let dest = temp_dir.path().join("moved");
         
         // Create empty duplicates report
-        let empty_report = r#"{
-            "total_groups": 0,
-            "total_duplicates": 0,
-            "threshold": 5,
-            "groups": []
-        }"#;
+        let empty_report = create_test_duplicate_report(vec![]);
         fs::write(&dup_list, empty_report).unwrap();
         
         let result = execute_process(dup_list, ProcessAction::Move, dest, true).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_process_move_action() {
+        let temp_dir = TempDir::new().unwrap();
+        let dup_list = temp_dir.path().join("duplicates.json");
+        let dest = temp_dir.path().join("moved");
+
+        // Create test files
+        let file1 = temp_dir.path().join("image1.jpg");
+        let file2 = temp_dir.path().join("image2.jpg");
+        fs::write(&file1, "test content 1").unwrap();
+        fs::write(&file2, "test content 2").unwrap();
+
+        // Create duplicate report with these files
+        let group = DuplicateGroup {
+            group_id: 0,
+            files: vec![
+                DuplicateFile {
+                    path: file1.to_string_lossy().to_string(),
+                    hash: "hash1".to_string(),
+                    distance_from_first: 0,
+                },
+                DuplicateFile {
+                    path: file2.to_string_lossy().to_string(),
+                    hash: "hash2".to_string(),
+                    distance_from_first: 3,
+                },
+            ],
+        };
+        
+        let report_json = create_test_duplicate_report(vec![group]);
+        fs::write(&dup_list, report_json).unwrap();
+
+        let result = execute_process(dup_list, ProcessAction::Move, dest.clone(), true).await;
+        assert!(result.is_ok());
+
+        // Check that first file still exists (kept)
+        assert!(file1.exists());
+        
+        // Check that second file was moved
+        assert!(!file2.exists());
+        assert!(dest.join("group_0").join("image2.jpg").exists());
+    }
+
+    #[tokio::test]
+    async fn test_process_delete_action() {
+        let temp_dir = TempDir::new().unwrap();
+        let dup_list = temp_dir.path().join("duplicates.json");
+
+        // Create test files
+        let file1 = temp_dir.path().join("image1.jpg");
+        let file2 = temp_dir.path().join("image2.jpg");
+        fs::write(&file1, "test content 1").unwrap();
+        fs::write(&file2, "test content 2").unwrap();
+
+        // Create duplicate report
+        let group = DuplicateGroup {
+            group_id: 0,
+            files: vec![
+                DuplicateFile {
+                    path: file1.to_string_lossy().to_string(),
+                    hash: "hash1".to_string(),
+                    distance_from_first: 0,
+                },
+                DuplicateFile {
+                    path: file2.to_string_lossy().to_string(),
+                    hash: "hash2".to_string(),
+                    distance_from_first: 3,
+                },
+            ],
+        };
+        
+        let report_json = create_test_duplicate_report(vec![group]);
+        fs::write(&dup_list, report_json).unwrap();
+
+        let result = execute_process(dup_list, ProcessAction::Delete, PathBuf::new(), true).await;
+        assert!(result.is_ok());
+
+        // Check that first file still exists (kept)
+        assert!(file1.exists());
+        
+        // Check that second file was deleted
+        assert!(!file2.exists());
+    }
+
+    #[tokio::test]
+    async fn test_process_multiple_groups() {
+        let temp_dir = TempDir::new().unwrap();
+        let dup_list = temp_dir.path().join("duplicates.json");
+        let dest = temp_dir.path().join("moved");
+
+        // Create test files
+        let files: Vec<PathBuf> = (1..=6)
+            .map(|i| {
+                let file = temp_dir.path().join(format!("image{}.jpg", i));
+                fs::write(&file, format!("test content {}", i)).unwrap();
+                file
+            })
+            .collect();
+
+        // Create multiple groups
+        let groups = vec![
+            DuplicateGroup {
+                group_id: 0,
+                files: vec![
+                    DuplicateFile {
+                        path: files[0].to_string_lossy().to_string(),
+                        hash: "hash1".to_string(),
+                        distance_from_first: 0,
+                    },
+                    DuplicateFile {
+                        path: files[1].to_string_lossy().to_string(),
+                        hash: "hash2".to_string(),
+                        distance_from_first: 2,
+                    },
+                    DuplicateFile {
+                        path: files[2].to_string_lossy().to_string(),
+                        hash: "hash3".to_string(),
+                        distance_from_first: 3,
+                    },
+                ],
+            },
+            DuplicateGroup {
+                group_id: 1,
+                files: vec![
+                    DuplicateFile {
+                        path: files[3].to_string_lossy().to_string(),
+                        hash: "hash4".to_string(),
+                        distance_from_first: 0,
+                    },
+                    DuplicateFile {
+                        path: files[4].to_string_lossy().to_string(),
+                        hash: "hash5".to_string(),
+                        distance_from_first: 1,
+                    },
+                ],
+            },
+        ];
+        
+        let report_json = create_test_duplicate_report(groups);
+        fs::write(&dup_list, report_json).unwrap();
+
+        let result = execute_process(dup_list, ProcessAction::Move, dest.clone(), true).await;
+        assert!(result.is_ok());
+
+        // Check that first files of each group still exist
+        assert!(files[0].exists()); // group 0 first file
+        assert!(files[3].exists()); // group 1 first file
+        
+        // Check that other files were moved
+        assert!(!files[1].exists());
+        assert!(!files[2].exists());
+        assert!(!files[4].exists());
+        
+        // Check moved files exist in destination
+        assert!(dest.join("group_0").join("image2.jpg").exists());
+        assert!(dest.join("group_0").join("image3.jpg").exists());
+        assert!(dest.join("group_1").join("image5.jpg").exists());
+    }
+
+    #[tokio::test]
+    async fn test_process_with_missing_source_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let dup_list = temp_dir.path().join("duplicates.json");
+        let dest = temp_dir.path().join("moved");
+
+        // Create only one file, but reference two in the report
+        let file1 = temp_dir.path().join("image1.jpg");
+        let file2 = temp_dir.path().join("image2.jpg"); // This one doesn't exist
+        fs::write(&file1, "test content 1").unwrap();
+        // Don't create file2
+
+        let group = DuplicateGroup {
+            group_id: 0,
+            files: vec![
+                DuplicateFile {
+                    path: file1.to_string_lossy().to_string(),
+                    hash: "hash1".to_string(),
+                    distance_from_first: 0,
+                },
+                DuplicateFile {
+                    path: file2.to_string_lossy().to_string(),
+                    hash: "hash2".to_string(),
+                    distance_from_first: 3,
+                },
+            ],
+        };
+        
+        let report_json = create_test_duplicate_report(vec![group]);
+        fs::write(&dup_list, report_json).unwrap();
+
+        let result = execute_process(dup_list, ProcessAction::Move, dest, true).await;
+        // Should succeed overall but with errors for missing files
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_process_invalid_json() {
+        let temp_dir = TempDir::new().unwrap();
+        let dup_list = temp_dir.path().join("duplicates.json");
+        let dest = temp_dir.path().join("moved");
+
+        // Create invalid JSON
+        fs::write(&dup_list, "invalid json content").unwrap();
+
+        let result = execute_process(dup_list, ProcessAction::Move, dest, true).await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_confirm_action_data_types() {
+        // Test that ProcessAction can be formatted
+        let move_action = ProcessAction::Move;
+        let delete_action = ProcessAction::Delete;
+        
+        assert!(format!("{:?}", move_action).contains("Move"));
+        assert!(format!("{:?}", delete_action).contains("Delete"));
     }
 }
