@@ -232,9 +232,7 @@ where
             reporter.report_completed(summary.processed_files, summary.error_count).await;
         }
         
-        // 永続化完了処理
-        persistence.finalize().await
-            .map_err(ProcessingError::persistence)?;
+        // 永続化完了処理は pipeline.execute() で既に実行済み
         
         Ok(summary)
     }

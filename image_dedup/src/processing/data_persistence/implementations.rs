@@ -653,18 +653,22 @@ impl HashPersistence for StreamingJsonHashPersistence {
             writer.flush().await
                 .map_err(|e| anyhow::anyhow!("フラッシュエラー: {e}"))?;
         } else {
-            // ロックを解放してから初期化処理を行う
-            drop(writer_guard);
-            
-            // ファイルが初期化されていない場合は空のJSONファイルを作成
-            self.initialize_file().await?;
-            let mut writer_guard = self.writer.lock().await;
-            if let Some(mut writer) = writer_guard.take() {
-                writer.write_all(b"\n]").await
-                    .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
-                writer.flush().await
-                    .map_err(|e| anyhow::anyhow!("フラッシュエラー: {e}"))?;
+            // ファイルが既に存在する場合（以前にfinalize済み）は何もしない
+            // ファイルが存在しない場合のみ空のJSONファイルを作成
+            if !tokio::fs::try_exists(&self.file_path).await.unwrap_or(false) {
+                // ロックを解放してから初期化処理を行う
+                drop(writer_guard);
+                
+                self.initialize_file().await?;
+                let mut writer_guard = self.writer.lock().await;
+                if let Some(mut writer) = writer_guard.take() {
+                    writer.write_all(b"\n]").await
+                        .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+                    writer.flush().await
+                        .map_err(|e| anyhow::anyhow!("フラッシュエラー: {e}"))?;
+                }
             }
+            // ファイルが既に存在する場合は何もしない（idempotent）
         }
         
         Ok(())

@@ -5,6 +5,9 @@ pub mod processing;
 pub mod cli;
 pub mod commands;
 
+#[cfg(test)]
+mod test_double_finalize;
+
 use processing::{
     ProcessingEngine,
     traits::{ProcessingConfig, ProgressReporter, HashPersistence},
