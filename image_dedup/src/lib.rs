@@ -2,6 +2,8 @@ pub mod image_loader;
 pub mod perceptual_hash;
 pub mod storage;
 pub mod processing;
+pub mod cli;
+pub mod commands;
 
 use processing::{
     ProcessingEngine,
