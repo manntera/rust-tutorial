@@ -1,6 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use image::DynamicImage;
+use mockall::automock;
 use std::path::Path;
 
 pub mod standard;
@@ -19,6 +20,7 @@ pub struct LoadResult {
 }
 
 /// 画像読み込みバックエンドのトレイト
+#[automock]
 #[async_trait]
 pub trait ImageLoaderBackend: Send + Sync {
     /// バイト配列から画像を読み込む

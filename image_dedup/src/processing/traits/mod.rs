@@ -3,9 +3,11 @@
 
 use async_trait::async_trait;
 use anyhow::Result;
+use mockall::automock;
 use super::types::{ProcessingMetadata, ProcessingSummary};
 
 /// 並列処理の設定を抽象化するトレイト
+#[automock]
 pub trait ProcessingConfig: Send + Sync {
     /// 最大同時実行タスク数を取得
     fn max_concurrent_tasks(&self) -> usize;
@@ -21,6 +23,7 @@ pub trait ProcessingConfig: Send + Sync {
 }
 
 /// 進捗報告の抽象化トレイト
+#[automock]
 #[async_trait]
 pub trait ProgressReporter: Send + Sync {
     /// 処理開始時の報告
@@ -37,6 +40,7 @@ pub trait ProgressReporter: Send + Sync {
 }
 
 /// 処理結果の永続化抽象化トレイト
+#[automock]
 #[async_trait]
 pub trait HashPersistence: Send + Sync {
     /// 単一ハッシュの保存
@@ -58,6 +62,7 @@ pub trait HashPersistence: Send + Sync {
 }
 
 /// 並列処理オーケストレーターの抽象化トレイト
+#[automock(type Config = MockProcessingConfig; type Reporter = MockProgressReporter; type Persistence = MockHashPersistence;)]
 #[async_trait]
 pub trait ParallelProcessor: Send + Sync {
     type Config: ProcessingConfig;

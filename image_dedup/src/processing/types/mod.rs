@@ -10,7 +10,7 @@ pub struct ProcessingMetadata {
 }
 
 /// 処理全体のサマリー
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProcessingSummary {
     pub total_files: usize,
     pub processed_files: usize,

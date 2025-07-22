@@ -1,6 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use image::DynamicImage;
+use mockall::automock;
 use std::fmt;
 
 pub mod average_hash;
@@ -67,6 +68,7 @@ impl fmt::Display for HashResult {
 }
 
 /// 知覚ハッシュバックエンドのトレイト
+#[automock]
 #[async_trait]
 pub trait PerceptualHashBackend: Send + Sync {
     /// 画像からハッシュを生成
