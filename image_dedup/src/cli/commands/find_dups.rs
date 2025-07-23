@@ -6,11 +6,25 @@ use std::path::PathBuf;
 struct HashEntry {
     file_path: String,
     hash: String,
-    #[allow(dead_code)]
-    algorithm: String,
     hash_bits: u64,
     #[allow(dead_code)]
-    timestamp: String,
+    metadata: Option<serde_json::Value>, // メタデータはオプショナル（旧フォーマット互換のため）
+}
+
+// 新しいフォーマット用の構造体
+#[derive(Debug, Deserialize)]
+struct ScanResult {
+    images: Vec<HashEntry>,
+    #[allow(dead_code)]
+    scan_info: serde_json::Value,
+}
+
+// 旧フォーマット互換用の構造体
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum HashDatabase {
+    NewFormat(ScanResult),
+    OldFormat(Vec<HashEntry>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -58,9 +72,14 @@ pub async fn execute_find_dups(
     println!("📄 出力ファイル: {}", output.display());
     println!("🎯 類似度閾値: {threshold} (ハミング距離)");
 
-    // Read hash entries from JSON file
+    // Read hash entries from JSON file (supporting both old and new formats)
     let json_content = std::fs::read_to_string(&hash_database)?;
-    let hash_entries: Vec<HashEntry> = serde_json::from_str(&json_content)?;
+    let database: HashDatabase = serde_json::from_str(&json_content)?;
+    
+    let mut hash_entries = match database {
+        HashDatabase::NewFormat(scan_result) => scan_result.images,
+        HashDatabase::OldFormat(entries) => entries,
+    };
 
     println!(
         "📊 読み込み完了: {}個のハッシュエントリ",
@@ -69,40 +88,34 @@ pub async fn execute_find_dups(
 
     // Group similar images
     let mut groups: Vec<DuplicateGroup> = Vec::new();
-    let mut processed: Vec<bool> = vec![false; hash_entries.len()];
     let mut group_id = 0;
 
-    for i in 0..hash_entries.len() {
-        if processed[i] {
-            continue;
-        }
-
+    while !hash_entries.is_empty() {
+        let base_entry = hash_entries.remove(0);
+        let base_hash = base_entry.hash_bits;
+        
         let mut group = DuplicateGroup {
             group_id,
             files: vec![DuplicateFile {
-                path: hash_entries[i].file_path.clone(),
-                hash: hash_entries[i].hash.clone(),
+                path: base_entry.file_path,
+                hash: base_entry.hash,
                 distance_from_first: 0,
             }],
         };
 
-        processed[i] = true;
-        let base_hash = hash_entries[i].hash_bits;
-
         // Find all similar images
-        for j in (i + 1)..hash_entries.len() {
-            if processed[j] {
-                continue;
-            }
-
-            let distance = hamming_distance(base_hash, hash_entries[j].hash_bits);
+        let mut i = 0;
+        while i < hash_entries.len() {
+            let distance = hamming_distance(base_hash, hash_entries[i].hash_bits);
             if distance <= threshold {
+                let similar_entry = hash_entries.remove(i);
                 group.files.push(DuplicateFile {
-                    path: hash_entries[j].file_path.clone(),
-                    hash: hash_entries[j].hash.clone(),
+                    path: similar_entry.file_path,
+                    hash: similar_entry.hash,
                     distance_from_first: distance,
                 });
-                processed[j] = true;
+            } else {
+                i += 1;
             }
         }
 
@@ -161,10 +174,48 @@ mod tests {
         HashEntry {
             file_path: file_path.to_string(),
             hash: hash.to_string(),
-            algorithm: "DCT".to_string(),
             hash_bits,
-            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            metadata: None,
         }
+    }
+
+    #[tokio::test]
+    async fn test_find_dups_new_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let hash_db = temp_dir.path().join("hashes.json");
+        let output = temp_dir.path().join("duplicates.json");
+
+        // Create new format database
+        let new_format = r#"{
+            "scan_info": {
+                "algorithm": "dct",
+                "timestamp": "2024-01-01T00:00:00Z",
+                "total_files": 2
+            },
+            "images": [
+                {
+                    "file_path": "image1.jpg",
+                    "hash": "hash1",
+                    "hash_bits": 0,
+                    "metadata": {"file_size": 1000}
+                },
+                {
+                    "file_path": "image2.jpg",
+                    "hash": "hash2",
+                    "hash_bits": 1,
+                    "metadata": {"file_size": 2000}
+                }
+            ]
+        }"#;
+        fs::write(&hash_db, new_format).unwrap();
+
+        execute_find_dups(hash_db, output.clone(), 3).await.unwrap();
+
+        // Check output file
+        let content = fs::read_to_string(&output).unwrap();
+        let report: DuplicatesReport = serde_json::from_str(&content).unwrap();
+        assert_eq!(report.total_groups, 1);
+        assert_eq!(report.total_duplicates, 1);
     }
 
     #[test]

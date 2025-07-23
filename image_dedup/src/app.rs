@@ -79,7 +79,7 @@ where
         H: Clone + 'static,
         S: Clone + 'static,
     {
-        // 不要なclone()を避け、Arcで共有する設計に変更
+        // Cloneトレイトを実装している型のみを受け入れる設計
         create_default_processing_engine(
             self.loader.clone(),
             self.hasher.clone(),

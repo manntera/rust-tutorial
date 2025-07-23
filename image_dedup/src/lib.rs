@@ -12,6 +12,23 @@ pub mod storage;
 
 // 下位互換性のため、従来のAPIを再エクスポート
 pub use app::App;
-pub use core::*;
-pub use engine::*;
-pub use services::*;
+// core モジュールから明示的にエクスポート
+pub use core::{
+    ProcessingError, ProcessingResult,
+    HashPersistence, ParallelProcessor, ProcessingConfig, ProgressReporter,
+    ProcessingOutcome, ProcessingMetadata, ProcessingSummary,
+};
+// engine モジュールから明示的にエクスポート  
+pub use engine::{
+    ProcessingEngine,
+    process_directory_with_engine, process_files_with_engine,
+    create_default_processing_engine, create_quiet_processing_engine,
+};
+// services モジュールから明示的にエクスポート
+pub use services::{
+    DefaultProcessingConfig,
+    ConsoleProgressReporter, NoOpProgressReporter,
+    JsonHashPersistence, MemoryHashPersistence, StreamingJsonHashPersistence,
+    spawn_result_collector,
+    process_single_file,
+};
