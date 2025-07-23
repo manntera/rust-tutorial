@@ -23,7 +23,10 @@ impl AlgorithmConfig for DctConfig {
     type Algorithm = DctHasher;
 
     fn create_hasher(&self) -> Result<Self::Algorithm> {
-        Ok(DctHasher::with_quality_factor(self.size, self.quality_factor))
+        Ok(DctHasher::with_quality_factor(
+            self.size,
+            self.quality_factor,
+        ))
     }
 
     fn algorithm_name(&self) -> &'static str {

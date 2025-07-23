@@ -8,18 +8,26 @@ fn main() {
         ("cargo tarpaulin --out Html", "テストカバレッジ測定"),
     ];
 
+    let current_dir = match env::current_dir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            eprintln!("現在のディレクトリを取得できません: {e}");
+            std::process::exit(1);
+        }
+    };
+
     for (cmd, desc) in &commands {
         println!("=== {desc} ===");
         let output = if cfg!(target_os = "windows") {
             Command::new("cmd")
                 .args(["/C", cmd])
-                .current_dir(env::current_dir().unwrap())
+                .current_dir(&current_dir)
                 .output()
         } else {
             Command::new("sh")
                 .arg("-c")
                 .arg(cmd)
-                .current_dir(env::current_dir().unwrap())
+                .current_dir(&current_dir)
                 .output()
         };
 

@@ -23,8 +23,9 @@ impl AverageHasher {
         self.hash_size
     }
 
-
-    fn compute_average_hash_from_gray(gray_image: image::ImageBuffer<image::Luma<u8>, Vec<u8>>) -> Vec<u8> {
+    fn compute_average_hash_from_gray(
+        gray_image: image::ImageBuffer<image::Luma<u8>, Vec<u8>>,
+    ) -> Vec<u8> {
         let size = gray_image.width();
 
         // 平均輝度を計算
@@ -130,12 +131,10 @@ impl DifferenceHasher {
         self.hash_size
     }
 
-
     fn compute_difference_hash_from_gray(
-        gray_image: image::ImageBuffer<image::Luma<u8>, Vec<u8>>, 
-        size: u32
+        gray_image: image::ImageBuffer<image::Luma<u8>, Vec<u8>>,
+        size: u32,
     ) -> Vec<u8> {
-
         // 隣接ピクセル間の差分でビットを設定
         let mut hash_bits = Vec::new();
         let mut current_byte = 0u8;

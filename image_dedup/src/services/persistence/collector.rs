@@ -1,17 +1,18 @@
 // Collector - 結果収集と永続化機能
 
-use crate::core::types::ProcessingResult;
+use crate::core::types::ProcessingOutcome;
 use crate::core::{HashPersistence, ProgressReporter};
 use anyhow::Result;
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use tokio::sync::mpsc;
 
 /// Collector: 結果収集と永続化
+/// AtomicUsizeを使用して効率的なカウンターを実装
 pub fn spawn_result_collector<R, P>(
-    mut result_rx: mpsc::Receiver<ProcessingResult>,
+    mut result_rx: mpsc::Receiver<ProcessingOutcome>,
     total_files: usize,
-    processed_count: Arc<tokio::sync::RwLock<usize>>,
-    error_count: Arc<tokio::sync::RwLock<usize>>,
+    processed_count: Arc<AtomicUsize>,
+    error_count: Arc<AtomicUsize>,
     reporter: Arc<R>,
     persistence: Arc<P>,
     batch_size: usize,
@@ -27,7 +28,7 @@ where
 
         while let Some(result) = result_rx.recv().await {
             match result {
-                ProcessingResult::Success {
+                ProcessingOutcome::Success {
                     file_path,
                     hash,
                     algorithm,
@@ -43,7 +44,7 @@ where
                         batch.clear();
                     }
                 }
-                ProcessingResult::Error { file_path, error } => {
+                ProcessingOutcome::Error { file_path, error } => {
                     reporter.report_error(&file_path, &error).await;
                     errors += 1;
                 }
@@ -60,9 +61,9 @@ where
             persistence.store_batch(&batch).await?;
         }
 
-        // カウンタ更新
-        *processed_count.write().await = completed;
-        *error_count.write().await = errors;
+        // カウンタ更新 - AtomicUsizeで効率的な更新
+        processed_count.store(completed, Ordering::Relaxed);
+        error_count.store(errors, Ordering::Relaxed);
 
         Ok(())
     })
@@ -78,9 +79,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_result_collector_processes_success_results() {
-        let (result_tx, result_rx) = mpsc::channel::<ProcessingResult>(10);
-        let processed_count = Arc::new(tokio::sync::RwLock::new(0usize));
-        let error_count = Arc::new(tokio::sync::RwLock::new(0usize));
+        let (result_tx, result_rx) = mpsc::channel::<ProcessingOutcome>(10);
+        let processed_count = Arc::new(AtomicUsize::new(0));
+        let error_count = Arc::new(AtomicUsize::new(0));
         let reporter = NoOpProgressReporter::new();
         let persistence = MemoryHashPersistence::new();
 
@@ -104,7 +105,7 @@ mod tests {
             };
 
             result_tx
-                .send(ProcessingResult::Success {
+                .send(ProcessingOutcome::Success {
                     file_path: format!("/test{i}.jpg"),
                     hash: format!("hash{i}"),
                     algorithm: "DCT".to_string(),
@@ -121,10 +122,10 @@ mod tests {
         collector_handle.await.unwrap().unwrap();
 
         // 結果確認
-        assert_eq!(*processed_count.read().await, 3);
-        assert_eq!(*error_count.read().await, 0);
+        assert_eq!(processed_count.load(Ordering::Relaxed), 3);
+        assert_eq!(error_count.load(Ordering::Relaxed), 0);
 
-        let stored_data = persistence.get_stored_data();
+        let stored_data = persistence.get_stored_data().unwrap();
         assert_eq!(stored_data.len(), 3);
         assert!(stored_data.contains_key("/test0.jpg"));
         assert!(stored_data.contains_key("/test1.jpg"));
@@ -133,9 +134,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_result_collector_processes_mixed_results() {
-        let (result_tx, result_rx) = mpsc::channel::<ProcessingResult>(10);
-        let processed_count = Arc::new(tokio::sync::RwLock::new(0usize));
-        let error_count = Arc::new(tokio::sync::RwLock::new(0usize));
+        let (result_tx, result_rx) = mpsc::channel::<ProcessingOutcome>(10);
+        let processed_count = Arc::new(AtomicUsize::new(0));
+        let error_count = Arc::new(AtomicUsize::new(0));
         let reporter = NoOpProgressReporter::new();
         let persistence = MemoryHashPersistence::new();
 
@@ -158,7 +159,7 @@ mod tests {
         };
 
         result_tx
-            .send(ProcessingResult::Success {
+            .send(ProcessingOutcome::Success {
                 file_path: "/success1.jpg".to_string(),
                 hash: "hash1".to_string(),
                 algorithm: "DCT".to_string(),
@@ -169,7 +170,7 @@ mod tests {
             .unwrap();
 
         result_tx
-            .send(ProcessingResult::Success {
+            .send(ProcessingOutcome::Success {
                 file_path: "/success2.jpg".to_string(),
                 hash: "hash2".to_string(),
                 algorithm: "DCT".to_string(),
@@ -181,7 +182,7 @@ mod tests {
 
         // エラー結果
         result_tx
-            .send(ProcessingResult::Error {
+            .send(ProcessingOutcome::Error {
                 file_path: "/error1.jpg".to_string(),
                 error: "load failed".to_string(),
             })
@@ -189,7 +190,7 @@ mod tests {
             .unwrap();
 
         result_tx
-            .send(ProcessingResult::Error {
+            .send(ProcessingOutcome::Error {
                 file_path: "/error2.jpg".to_string(),
                 error: "invalid format".to_string(),
             })
@@ -199,10 +200,10 @@ mod tests {
         drop(result_tx);
         collector_handle.await.unwrap().unwrap();
 
-        assert_eq!(*processed_count.read().await, 2);
-        assert_eq!(*error_count.read().await, 2);
+        assert_eq!(processed_count.load(Ordering::Relaxed), 2);
+        assert_eq!(error_count.load(Ordering::Relaxed), 2);
 
-        let stored_data = persistence.get_stored_data();
+        let stored_data = persistence.get_stored_data().unwrap();
         assert_eq!(stored_data.len(), 2);
         assert!(stored_data.contains_key("/success1.jpg"));
         assert!(stored_data.contains_key("/success2.jpg"));
@@ -210,9 +211,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_result_collector_batching() {
-        let (result_tx, result_rx) = mpsc::channel::<ProcessingResult>(10);
-        let processed_count = Arc::new(tokio::sync::RwLock::new(0usize));
-        let error_count = Arc::new(tokio::sync::RwLock::new(0usize));
+        let (result_tx, result_rx) = mpsc::channel::<ProcessingOutcome>(10);
+        let processed_count = Arc::new(AtomicUsize::new(0));
+        let error_count = Arc::new(AtomicUsize::new(0));
         let reporter = NoOpProgressReporter::new();
         let persistence = MemoryHashPersistence::new();
 
@@ -236,7 +237,7 @@ mod tests {
             };
 
             result_tx
-                .send(ProcessingResult::Success {
+                .send(ProcessingOutcome::Success {
                     file_path: format!("/test{i}.jpg"),
                     hash: format!("hash{i}"),
                     algorithm: "DCT".to_string(),
@@ -250,10 +251,10 @@ mod tests {
         drop(result_tx);
         collector_handle.await.unwrap().unwrap();
 
-        assert_eq!(*processed_count.read().await, 5);
-        assert_eq!(*error_count.read().await, 0);
+        assert_eq!(processed_count.load(Ordering::Relaxed), 5);
+        assert_eq!(error_count.load(Ordering::Relaxed), 0);
 
-        let stored_data = persistence.get_stored_data();
+        let stored_data = persistence.get_stored_data().unwrap();
         assert_eq!(stored_data.len(), 5);
     }
 }

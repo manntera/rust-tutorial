@@ -39,34 +39,53 @@ impl MemoryHashPersistence {
     }
 
     /// テスト用：保存されたデータを取得
-    pub fn get_stored_data(&self) -> HashMap<String, (String, ProcessingMetadata)> {
-        self.storage
+    pub fn get_stored_data(&self) -> Result<HashMap<String, (String, ProcessingMetadata)>> {
+        let storage_guard = self.storage
             .lock()
-            .unwrap()
+            .map_err(|e| anyhow::anyhow!("Storage lock poisoned: {}", e))?;
+        
+        Ok(storage_guard
             .iter()
             .map(|(k, (hash, _alg, _bits, meta))| (k.clone(), (hash.clone(), meta.clone())))
-            .collect()
+            .collect())
     }
 
     /// テスト用：完了状態を確認
-    pub fn is_finalized(&self) -> bool {
-        *self.finalized.lock().unwrap()
+    pub fn is_finalized(&self) -> Result<bool> {
+        let finalized_guard = self.finalized
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Finalized lock poisoned: {}", e))?;
+        Ok(*finalized_guard)
     }
 
     /// テスト用：データクリア
-    pub fn clear(&self) {
-        self.storage.lock().unwrap().clear();
-        *self.finalized.lock().unwrap() = false;
+    pub fn clear(&self) -> Result<()> {
+        self.storage
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Storage lock poisoned: {}", e))?
+            .clear();
+        
+        *self.finalized
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Finalized lock poisoned: {}", e))? = false;
+        
+        Ok(())
     }
 
     /// テスト用：特定のファイルが保存されているかチェック
-    pub fn contains_file(&self, file_path: &str) -> bool {
-        self.storage.lock().unwrap().contains_key(file_path)
+    pub fn contains_file(&self, file_path: &str) -> Result<bool> {
+        let storage_guard = self.storage
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Storage lock poisoned: {}", e))?;
+        Ok(storage_guard.contains_key(file_path))
     }
 
     /// テスト用：保存されたファイル数を取得
-    pub fn stored_count(&self) -> usize {
-        self.storage.lock().unwrap().len()
+    pub fn stored_count(&self) -> Result<usize> {
+        let storage_guard = self.storage
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Storage lock poisoned: {}", e))?;
+        Ok(storage_guard.len())
     }
 }
 
@@ -78,10 +97,13 @@ impl HashPersistence for MemoryHashPersistence {
         hash: &str,
         metadata: &ProcessingMetadata,
     ) -> Result<()> {
-        self.storage.lock().unwrap().insert(
-            file_path.to_string(),
-            (hash.to_string(), "DCT".to_string(), 0u64, metadata.clone()),
-        );
+        self.storage
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Storage lock poisoned: {}", e))?
+            .insert(
+                file_path.to_owned(),
+                (hash.to_owned(), "DCT".to_owned(), 0u64, metadata.clone()),
+            );
         Ok(())
     }
 
@@ -89,13 +111,15 @@ impl HashPersistence for MemoryHashPersistence {
         &self,
         results: &[(String, String, String, u64, ProcessingMetadata)],
     ) -> Result<()> {
-        let mut storage = self.storage.lock().unwrap();
+        let mut storage = self.storage
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Storage lock poisoned: {}", e))?;
         for (path, hash, algorithm, hash_bits, metadata) in results {
             storage.insert(
-                path.clone(),
+                path.to_owned(),
                 (
-                    hash.clone(),
-                    algorithm.clone(),
+                    hash.to_owned(),
+                    algorithm.to_owned(),
                     *hash_bits,
                     metadata.clone(),
                 ),
@@ -105,7 +129,9 @@ impl HashPersistence for MemoryHashPersistence {
     }
 
     async fn finalize(&self) -> Result<()> {
-        *self.finalized.lock().unwrap() = true;
+        *self.finalized
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Finalized lock poisoned: {}", e))? = true;
         Ok(())
     }
 }
@@ -227,11 +253,18 @@ impl HashPersistence for JsonHashPersistence {
             let json_str = serde_json::to_string_pretty(&entry)
                 .map_err(|e| anyhow::anyhow!("JSON変換エラー: {e}"))?;
 
-            let indented = json_str
-                .lines()
-                .map(|line| format!("  {line}"))
-                .collect::<Vec<_>>()
-                .join("\n");
+            // より効率的な文字列処理 - 中間Vecを避ける
+            let indented = {
+                let mut result = String::with_capacity(json_str.len() + json_str.matches('\n').count() * 2);
+                for (i, line) in json_str.lines().enumerate() {
+                    if i > 0 {
+                        result.push('\n');
+                    }
+                    result.push_str("  ");
+                    result.push_str(line);
+                }
+                result
+            };
 
             // 書き込み前の状態チェックとライター取得
             let (writer_exists, needs_comma) = {
@@ -247,7 +280,8 @@ impl HashPersistence for JsonHashPersistence {
             // 実際の書き込み（ロックを短時間だけ保持）
             {
                 let mut writer_opt = self.writer.lock().await;
-                let writer = writer_opt.as_mut().unwrap();
+                let writer = writer_opt.as_mut()
+                    .ok_or_else(|| anyhow::anyhow!("Writer should be initialized"))?;
 
                 if needs_comma {
                     writer
@@ -340,7 +374,7 @@ mod tests {
             .await
             .unwrap();
 
-        let stored = persistence.get_stored_data();
+        let stored = persistence.get_stored_data().unwrap();
         assert_eq!(stored.len(), 1);
         assert_eq!(stored["/test1.jpg"].0, "hash1");
         assert_eq!(stored["/test1.jpg"].1, metadata);
@@ -364,13 +398,13 @@ mod tests {
         ];
         persistence.store_batch(&batch).await.unwrap();
 
-        let stored = persistence.get_stored_data();
+        let stored = persistence.get_stored_data().unwrap();
         assert_eq!(stored.len(), 3);
 
         // 完了処理テスト
-        assert!(!persistence.is_finalized());
+        assert!(!persistence.is_finalized().unwrap());
         persistence.finalize().await.unwrap();
-        assert!(persistence.is_finalized());
+        assert!(persistence.is_finalized().unwrap());
     }
 
     #[tokio::test]
@@ -389,13 +423,13 @@ mod tests {
             .unwrap();
         persistence.finalize().await.unwrap();
 
-        assert_eq!(persistence.get_stored_data().len(), 1);
-        assert!(persistence.is_finalized());
+        assert_eq!(persistence.get_stored_data().unwrap().len(), 1);
+        assert!(persistence.is_finalized().unwrap());
 
-        persistence.clear();
+        persistence.clear().unwrap();
 
-        assert_eq!(persistence.get_stored_data().len(), 0);
-        assert!(!persistence.is_finalized());
+        assert_eq!(persistence.get_stored_data().unwrap().len(), 0);
+        assert!(!persistence.is_finalized().unwrap());
     }
 
     #[tokio::test]
@@ -768,18 +802,18 @@ impl StreamingJsonHashPersistence {
                     .map_err(|e| anyhow::anyhow!("scan_info JSON変換エラー: {e}"))?;
 
                 // scan_infoを2スペースでインデント
-                let indented_scan_info = scan_info_json
-                    .lines()
-                    .enumerate()
-                    .map(|(i, line)| {
-                        if i == 0 {
-                            line.to_string() // 最初の行はインデントしない
-                        } else {
-                            format!("  {line}") // 後続行は2スペースでインデント
+                // より効率的な文字列処理 - scan_info版
+                let indented_scan_info = {
+                    let mut result = String::with_capacity(scan_info_json.len() + scan_info_json.matches('\n').count() * 2);
+                    for (i, line) in scan_info_json.lines().enumerate() {
+                        if i > 0 {
+                            result.push('\n');
+                            result.push_str("  ");
                         }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
+                        result.push_str(line);
+                    }
+                    result
+                };
 
                 writer
                     .write_all(b"  \"scan_info\": ")
@@ -818,11 +852,18 @@ impl StreamingJsonHashPersistence {
             let json_str = serde_json::to_string_pretty(&entry)
                 .map_err(|e| anyhow::anyhow!("JSON変換エラー: {e}"))?;
 
-            let indented = json_str
-                .lines()
-                .map(|line| format!("    {line}"))
-                .collect::<Vec<_>>()
-                .join("\n");
+            // より効率的な文字列処理 - 4スペースインデント版
+            let indented = {
+                let mut result = String::with_capacity(json_str.len() + json_str.matches('\n').count() * 4);
+                for (i, line) in json_str.lines().enumerate() {
+                    if i > 0 {
+                        result.push('\n');
+                    }
+                    result.push_str("    ");
+                    result.push_str(line);
+                }
+                result
+            };
 
             writer
                 .write_all(indented.as_bytes())
@@ -933,18 +974,18 @@ impl HashPersistence for StreamingJsonHashPersistence {
                         let scan_info_json = serde_json::to_string_pretty(scan_info)
                             .map_err(|e| anyhow::anyhow!("scan_info JSON変換エラー: {e}"))?;
 
-                        let indented_scan_info = scan_info_json
-                            .lines()
-                            .enumerate()
-                            .map(|(i, line)| {
-                                if i == 0 {
-                                    line.to_string()
-                                } else {
-                                    format!("  {line}")
+                        // より効率的な文字列処理 - 空ファイル版
+                        let indented_scan_info = {
+                            let mut result = String::with_capacity(scan_info_json.len() + scan_info_json.matches('\n').count() * 2);
+                            for (i, line) in scan_info_json.lines().enumerate() {
+                                if i > 0 {
+                                    result.push('\n');
+                                    result.push_str("  ");
                                 }
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n");
+                                result.push_str(line);
+                            }
+                            result
+                        };
 
                         writer
                             .write_all(b"  \"scan_info\": ")
@@ -989,9 +1030,12 @@ mod streaming_tests {
         let json_file = temp_dir.path().join("streaming_test.json");
 
         let persistence = StreamingJsonHashPersistence::with_buffer_size(&json_file, 2);
-        
+
         // スキャン情報を設定
-        persistence.set_scan_info("test".to_string(), serde_json::json!({"size": 8})).await.unwrap();
+        persistence
+            .set_scan_info("test".to_string(), serde_json::json!({"size": 8}))
+            .await
+            .unwrap();
 
         let metadata = ProcessingMetadata {
             file_size: 1024,
@@ -1021,12 +1065,12 @@ mod streaming_tests {
         let json_value: Value = serde_json::from_str(&content).unwrap();
 
         assert!(json_value.is_object());
-        
+
         // scan_infoセクションの確認
         let scan_info = &json_value["scan_info"];
         assert_eq!(scan_info["algorithm"], "test");
         assert_eq!(scan_info["total_files"], 3);
-        
+
         // imagesセクションの確認
         let images = json_value["images"].as_array().unwrap();
         assert_eq!(images.len(), 3);
@@ -1056,9 +1100,15 @@ mod streaming_tests {
         let json_file = temp_dir.path().join("batch_streaming.json");
 
         let persistence = StreamingJsonHashPersistence::with_buffer_size(&json_file, 5);
-        
+
         // スキャン情報を設定
-        persistence.set_scan_info("batch_test".to_string(), serde_json::json!({"batch_size": 10})).await.unwrap();
+        persistence
+            .set_scan_info(
+                "batch_test".to_string(),
+                serde_json::json!({"batch_size": 10}),
+            )
+            .await
+            .unwrap();
 
         let metadata = ProcessingMetadata {
             file_size: 2048,
@@ -1085,13 +1135,13 @@ mod streaming_tests {
 
         let content = tokio::fs::read_to_string(&json_file).await.unwrap();
         let json_value: Value = serde_json::from_str(&content).unwrap();
-        
+
         // 新しいフォーマットで確認
         assert!(json_value.is_object());
         let scan_info = &json_value["scan_info"];
         assert_eq!(scan_info["algorithm"], "batch_test");
         assert_eq!(scan_info["total_files"], 10);
-        
+
         let images = json_value["images"].as_array().unwrap();
         assert_eq!(images.len(), 10);
 
@@ -1108,10 +1158,13 @@ mod streaming_tests {
         let json_file = temp_dir.path().join("empty_streaming.json");
 
         let persistence = StreamingJsonHashPersistence::new(&json_file);
-        
+
         // スキャン情報を設定
-        persistence.set_scan_info("empty_test".to_string(), serde_json::json!({})).await.unwrap();
-        
+        persistence
+            .set_scan_info("empty_test".to_string(), serde_json::json!({}))
+            .await
+            .unwrap();
+
         persistence.finalize().await.unwrap();
 
         let content = tokio::fs::read_to_string(&json_file).await.unwrap();
@@ -1121,7 +1174,7 @@ mod streaming_tests {
         assert!(json_value.is_object());
         let scan_info = &json_value["scan_info"];
         assert_eq!(scan_info["algorithm"], "empty_test");
-        
+
         let images = json_value["images"].as_array().unwrap();
         assert_eq!(images.len(), 0);
     }

@@ -1,6 +1,6 @@
 // Worker - 単一ファイル処理機能
 
-use crate::core::types::{ProcessingMetadata, ProcessingResult};
+use crate::core::types::{ProcessingMetadata, ProcessingOutcome};
 use crate::image_loader::ImageLoaderBackend;
 use crate::perceptual_hash::PerceptualHashBackend;
 use std::path::Path;
@@ -12,7 +12,7 @@ pub async fn process_single_file<L, H>(
     hasher: &H,
     file_path: &str,
     _worker_id: usize,
-) -> ProcessingResult
+) -> ProcessingOutcome
 where
     L: ImageLoaderBackend,
     H: PerceptualHashBackend,
@@ -48,14 +48,14 @@ where
     .await;
 
     match result {
-        Ok((hash, algorithm, hash_bits, metadata)) => ProcessingResult::Success {
+        Ok((hash, algorithm, hash_bits, metadata)) => ProcessingOutcome::Success {
             file_path: file_path.to_string(),
             hash,
             algorithm,
             hash_bits,
             metadata,
         },
-        Err(error) => ProcessingResult::Error {
+        Err(error) => ProcessingOutcome::Error {
             file_path: file_path.to_string(),
             error: error.to_string(),
         },

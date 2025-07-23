@@ -76,7 +76,8 @@ impl DynamicAlgorithmConfig {
 }
 
 // Type alias for complex creator function type
-type CreatorFunction = Box<dyn Fn(&serde_json::Value) -> Result<Box<dyn PerceptualHashBackend>> + Send + Sync>;
+type CreatorFunction =
+    Box<dyn Fn(&serde_json::Value) -> Result<Box<dyn PerceptualHashBackend>> + Send + Sync>;
 
 /// アルゴリズム設定レジストリ
 pub struct AlgorithmRegistry {

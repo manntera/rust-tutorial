@@ -179,7 +179,7 @@ mod tests {
             threshold: 5,
             groups,
         };
-        serde_json::to_string_pretty(&report).unwrap()
+        serde_json::to_string_pretty(&report).expect("Failed to serialize test report")
     }
 
     #[tokio::test]
@@ -299,8 +299,8 @@ mod tests {
         // Create test files
         let files: Vec<PathBuf> = (1..=6)
             .map(|i| {
-                let file = temp_dir.path().join(format!("image{}.jpg", i));
-                fs::write(&file, format!("test content {}", i)).unwrap();
+                let file = temp_dir.path().join(format!("image{i}.jpg"));
+                fs::write(&file, format!("test content {i}")).unwrap();
                 file
             })
             .collect();
@@ -420,7 +420,7 @@ mod tests {
         let move_action = ProcessAction::Move;
         let delete_action = ProcessAction::Delete;
 
-        assert!(format!("{:?}", move_action).contains("Move"));
-        assert!(format!("{:?}", delete_action).contains("Delete"));
+        assert!(format!("{move_action:?}").contains("Move"));
+        assert!(format!("{delete_action:?}").contains("Delete"));
     }
 }

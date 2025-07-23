@@ -9,7 +9,7 @@ use crate::{
     services::persistence::spawn_result_collector,
 };
 use anyhow::Result;
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use std::time::Instant;
 use tokio::sync::mpsc;
 
@@ -48,10 +48,10 @@ where
         let (work_tx, work_rx) = mpsc::channel::<String>(config.channel_buffer_size());
         let (result_tx, result_rx) = mpsc::channel(config.channel_buffer_size());
 
-        // 同期プリミティブ
+        // 同期プリミティブ - AtomicUsizeで効率的なカウンター
         let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_tasks()));
-        let processed_count = Arc::new(tokio::sync::RwLock::new(0usize));
-        let error_count = Arc::new(tokio::sync::RwLock::new(0usize));
+        let processed_count = Arc::new(AtomicUsize::new(0));
+        let error_count = Arc::new(AtomicUsize::new(0));
 
         let total_files = files.len();
         reporter.report_started(total_files).await;
@@ -61,8 +61,8 @@ where
 
         // Consumer Pool起動
         let consumer_handles = spawn_consumers(
-            self.loader.clone(),
-            self.hasher.clone(),
+            Arc::clone(&self.loader),
+            Arc::clone(&self.hasher),
             work_rx,
             result_tx.clone(),
             semaphore,
@@ -94,9 +94,9 @@ where
         // Collector完了を待機
         collector_handle.await??;
 
-        // 完了報告
-        let final_processed = *processed_count.read().await;
-        let final_errors = *error_count.read().await;
+        // 完了報告 - AtomicUsizeからのload
+        let final_processed = processed_count.load(Ordering::Relaxed);
+        let final_errors = error_count.load(Ordering::Relaxed);
         reporter
             .report_completed(final_processed, final_errors)
             .await;
@@ -213,7 +213,7 @@ mod tests {
         assert!(summary.average_time_per_file_ms > 0.0);
 
         // 永続化確認
-        let stored_data = persistence.get_stored_data();
+        let stored_data = persistence.get_stored_data().unwrap();
         assert_eq!(stored_data.len(), 3);
 
         for i in 0..3 {
@@ -268,7 +268,7 @@ mod tests {
         assert_eq!(summary.processed_files, 10);
         assert_eq!(summary.error_count, 0);
 
-        let stored_data = persistence.get_stored_data();
+        let stored_data = persistence.get_stored_data().unwrap();
         assert_eq!(stored_data.len(), 10);
     }
 }

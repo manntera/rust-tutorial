@@ -1,7 +1,7 @@
 // Consumer - 並列ワーカー機能
 
 use crate::{
-    core::types::ProcessingResult, image_loader::ImageLoaderBackend,
+    core::types::ProcessingOutcome, image_loader::ImageLoaderBackend,
     perceptual_hash::PerceptualHashBackend, services::processing::process_single_file,
 };
 use anyhow::Result;
@@ -14,7 +14,7 @@ pub fn spawn_single_consumer<L, H>(
     loader: Arc<L>,
     hasher: Arc<H>,
     work_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<String>>>,
-    result_tx: mpsc::Sender<ProcessingResult>,
+    result_tx: mpsc::Sender<ProcessingOutcome>,
     semaphore: Arc<tokio::sync::Semaphore>,
 ) -> tokio::task::JoinHandle<Result<()>>
 where
@@ -57,7 +57,7 @@ pub fn spawn_consumers<L, H>(
     loader: Arc<L>,
     hasher: Arc<H>,
     work_rx: mpsc::Receiver<String>,
-    result_tx: mpsc::Sender<ProcessingResult>,
+    result_tx: mpsc::Sender<ProcessingOutcome>,
     semaphore: Arc<tokio::sync::Semaphore>,
     worker_count: usize,
 ) -> Vec<tokio::task::JoinHandle<Result<()>>>
@@ -71,11 +71,11 @@ where
     for worker_id in 0..worker_count {
         let handle = spawn_single_consumer(
             worker_id,
-            loader.clone(),
-            hasher.clone(),
-            work_rx.clone(),
+            Arc::clone(&loader),
+            Arc::clone(&hasher),
+            Arc::clone(&work_rx),
             result_tx.clone(),
-            semaphore.clone(),
+            Arc::clone(&semaphore),
         );
         handles.push(handle);
     }
@@ -88,7 +88,7 @@ mod tests {
     use super::*;
     use crate::image_loader::standard::StandardImageLoader;
     use crate::perceptual_hash::dct_hash::DctHasher;
-    // Removed ambiguous import - using crate::core::ProcessingResult from main imports
+    // Removed ambiguous import - using crate::core::ProcessingOutcome from main imports
     // Local test utilities
     const MINIMAL_PNG_DATA: &[u8] = &[
         0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
@@ -132,7 +132,7 @@ mod tests {
 
         // チャンネル作成
         let (work_tx, work_rx) = mpsc::channel::<String>(10);
-        let (result_tx, mut result_rx) = mpsc::channel::<ProcessingResult>(10);
+        let (result_tx, mut result_rx) = mpsc::channel::<ProcessingOutcome>(10);
         let work_rx = Arc::new(tokio::sync::Mutex::new(work_rx));
         let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
 
@@ -161,7 +161,7 @@ mod tests {
 
         // 結果確認
         match result {
-            ProcessingResult::Success {
+            ProcessingOutcome::Success {
                 file_path,
                 hash,
                 metadata,
@@ -171,7 +171,7 @@ mod tests {
                 assert!(!hash.is_empty());
                 assert_eq!(metadata.image_dimensions, (1, 1));
             }
-            ProcessingResult::Error { .. } => panic!("Expected success"),
+            ProcessingOutcome::Error { .. } => panic!("Expected success"),
         }
     }
 
@@ -182,7 +182,7 @@ mod tests {
         fs::write(&invalid_file, b"not a valid image").unwrap();
 
         let (work_tx, work_rx) = mpsc::channel::<String>(10);
-        let (result_tx, mut result_rx) = mpsc::channel::<ProcessingResult>(10);
+        let (result_tx, mut result_rx) = mpsc::channel::<ProcessingOutcome>(10);
         let work_rx = Arc::new(tokio::sync::Mutex::new(work_rx));
         let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
 
@@ -205,8 +205,8 @@ mod tests {
         worker_handle.await.unwrap().unwrap();
 
         match result {
-            ProcessingResult::Success { .. } => panic!("Expected error"),
-            ProcessingResult::Error { file_path, error } => {
+            ProcessingOutcome::Success { .. } => panic!("Expected error"),
+            ProcessingOutcome::Error { file_path, error } => {
                 assert!(file_path.ends_with("invalid.jpg"));
                 assert!(!error.is_empty());
             }
@@ -224,7 +224,7 @@ mod tests {
 
         // チャンネル作成
         let (work_tx, work_rx) = mpsc::channel::<String>(10);
-        let (result_tx, mut result_rx) = mpsc::channel::<ProcessingResult>(10);
+        let (result_tx, mut result_rx) = mpsc::channel::<ProcessingOutcome>(10);
         let semaphore = Arc::new(tokio::sync::Semaphore::new(3));
 
         // Consumer pool起動
@@ -263,14 +263,13 @@ mod tests {
         let processed_files: HashSet<String> = results
             .iter()
             .map(|r| match r {
-                ProcessingResult::Success { file_path, .. } => file_path.clone(),
-                ProcessingResult::Error { file_path, .. } => file_path.clone(),
+                ProcessingOutcome::Success { file_path, .. } => file_path.clone(),
+                ProcessingOutcome::Error { file_path, .. } => file_path.clone(),
             })
             .collect();
 
         for file_path in &test_files {
-            assert!(
-                processed_files.iter().any(|p| p.contains(&format!(
+            assert!(processed_files.iter().any(|p| p.contains(&format!(
                     "test{}.png",
                     file_path
                         .split("test")
@@ -279,8 +278,7 @@ mod tests {
                         .split('.')
                         .next()
                         .unwrap()
-                )))
-            );
+                ))));
         }
     }
 
@@ -297,7 +295,7 @@ mod tests {
         fs::write(&invalid_file, b"not a valid image").unwrap();
 
         let (work_tx, work_rx) = mpsc::channel::<String>(10);
-        let (result_tx, mut result_rx) = mpsc::channel::<ProcessingResult>(10);
+        let (result_tx, mut result_rx) = mpsc::channel::<ProcessingOutcome>(10);
         let semaphore = Arc::new(tokio::sync::Semaphore::new(2));
 
         let worker_handles = spawn_consumers(
@@ -325,8 +323,8 @@ mod tests {
         for _ in 0..2 {
             if let Ok(Some(result)) = timeout(Duration::from_secs(5), result_rx.recv()).await {
                 match result {
-                    ProcessingResult::Success { .. } => success_count += 1,
-                    ProcessingResult::Error { .. } => error_count += 1,
+                    ProcessingOutcome::Success { .. } => success_count += 1,
+                    ProcessingOutcome::Error { .. } => error_count += 1,
                 }
             }
         }
@@ -346,7 +344,7 @@ mod tests {
         let (_temp_dir, test_file) = create_test_png_file("test.png");
 
         let (work_tx, work_rx) = mpsc::channel::<String>(1);
-        let (result_tx, _result_rx) = mpsc::channel::<ProcessingResult>(1);
+        let (result_tx, _result_rx) = mpsc::channel::<ProcessingOutcome>(1);
         let work_rx = Arc::new(tokio::sync::Mutex::new(work_rx));
         let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
 
@@ -375,7 +373,7 @@ mod tests {
     #[tokio::test]
     async fn test_consumer_pool_empty_queue() {
         let (work_tx, work_rx) = mpsc::channel::<String>(1);
-        let (result_tx, result_rx) = mpsc::channel::<ProcessingResult>(1);
+        let (result_tx, result_rx) = mpsc::channel::<ProcessingOutcome>(1);
         let semaphore = Arc::new(tokio::sync::Semaphore::new(2));
 
         let worker_handles = spawn_consumers(

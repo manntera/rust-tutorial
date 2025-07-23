@@ -87,7 +87,7 @@ mod tests {
             load_time_ms: 25,
         };
 
-        let debug_str = format!("{:?}", result);
+        let debug_str = format!("{result:?}");
         assert!(debug_str.contains("100"));
         assert!(debug_str.contains("25"));
     }

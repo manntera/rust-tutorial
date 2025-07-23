@@ -46,23 +46,22 @@ impl PerceptualHashBackend for DctHasher {
 
         let size = self.hash_size;
         let rgb_image = image.to_rgb8();
-        let hash = tokio::task::spawn_blocking(move || {
-                let hasher = HasherConfig::new()
-                    .hash_size(size, size)
-                    .hash_alg(HashAlg::Mean)
-                    .preproc_dct()
-                    .to_hasher();
-                let img_hash_image = img_hash::image::ImageBuffer::from_raw(
-                    rgb_image.width(),
-                    rgb_image.height(),
-                    rgb_image.into_raw(),
-                )
-                .unwrap();
-                let dynamic_img_hash_image =
-                    img_hash::image::DynamicImage::ImageRgb8(img_hash_image);
-                hasher.hash_image(&dynamic_img_hash_image)
+        let hash = tokio::task::spawn_blocking(move || -> Result<img_hash::ImageHash> {
+            let hasher = HasherConfig::new()
+                .hash_size(size, size)
+                .hash_alg(HashAlg::Mean)
+                .preproc_dct()
+                .to_hasher();
+            let img_hash_image = img_hash::image::ImageBuffer::from_raw(
+                rgb_image.width(),
+                rgb_image.height(),
+                rgb_image.into_raw(),
+            )
+            .ok_or_else(|| anyhow::anyhow!("Failed to create image buffer for hash calculation"))?;
+            let dynamic_img_hash_image = img_hash::image::DynamicImage::ImageRgb8(img_hash_image);
+            Ok(hasher.hash_image(&dynamic_img_hash_image))
         })
-        .await?;
+        .await??;
 
         let computation_time_ms = start_time.elapsed().as_millis() as u64;
 

@@ -356,7 +356,16 @@ mod tests {
         let nonexistent_dir = PathBuf::from("nonexistent_directory");
         let output = PathBuf::from("output.json");
 
-        let result = execute_scan(nonexistent_dir, output, None, false, "dct".to_string(), 8, None).await;
+        let result = execute_scan(
+            nonexistent_dir,
+            output,
+            None,
+            false,
+            "dct".to_string(),
+            8,
+            None,
+        )
+        .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("does not exist"));
     }
@@ -382,7 +391,16 @@ mod tests {
 
         let target_dir = TempDir::new().unwrap();
 
-        let result = execute_scan(target_dir.path().to_path_buf(), output, None, false, "dct".to_string(), 8, None).await;
+        let result = execute_scan(
+            target_dir.path().to_path_buf(),
+            output,
+            None,
+            false,
+            "dct".to_string(),
+            8,
+            None,
+        )
+        .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
     }

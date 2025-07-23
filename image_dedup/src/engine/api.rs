@@ -5,7 +5,7 @@ use super::ProcessingEngine;
 use crate::{
     core::{
         HashPersistence, ProcessingConfig, ProcessingSummary, ProgressReporter,
-        error::ProcessingResult,
+        ProcessingResult,
     },
     image_loader::ImageLoaderBackend,
     perceptual_hash::PerceptualHashBackend,
@@ -165,7 +165,7 @@ mod tests {
         assert_eq!(result.error_count, 0);
 
         // 結果がエンジンの永続化に保存されていることを確認
-        assert_eq!(engine.persistence().stored_count(), 1);
+        assert_eq!(engine.persistence().stored_count().unwrap(), 1);
     }
 
     #[tokio::test]
@@ -185,7 +185,7 @@ mod tests {
         assert_eq!(result.total_files, 1);
         assert_eq!(result.processed_files, 1);
         assert_eq!(result.error_count, 0);
-        assert_eq!(engine.persistence().stored_count(), 1);
+        assert_eq!(engine.persistence().stored_count().unwrap(), 1);
     }
 
     #[test]

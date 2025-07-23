@@ -5,7 +5,7 @@ use super::pipeline::ProcessingPipeline;
 use crate::{
     core::{
         HashPersistence, ProcessingConfig, ProcessingError, ProcessingSummary, ProgressReporter,
-        error::ProcessingResult,
+        ProcessingResult,
     },
     image_loader::ImageLoaderBackend,
     perceptual_hash::PerceptualHashBackend,
@@ -18,15 +18,15 @@ use std::sync::Arc;
 /// 全ての依存関係がコンストラクタで注入される真のDIパターンを実装。
 /// テスタビリティと保守性を重視した設計。
 ///
-/// エンジン自体をArc<ProcessingEngine>でラップして共有する設計。
-/// 内部フィールドは直接所有でシンプルに保つ。
+/// 並列処理で共有される依存関係はArcで管理し、
+/// 不要なクローンを避ける効率的な設計。
 pub struct ProcessingEngine<L, H, S, C, R, P> {
-    loader: L,
-    hasher: H,
-    storage: S,
-    config: C,
-    reporter: R,
-    persistence: P,
+    loader: Arc<L>,
+    hasher: Arc<H>,
+    storage: Arc<S>,
+    config: Arc<C>,
+    reporter: Arc<R>,
+    persistence: Arc<P>,
 }
 
 impl<L, H, S, C, R, P> ProcessingEngine<L, H, S, C, R, P>
@@ -41,28 +41,22 @@ where
     /// 新しい処理エンジンを作成
     ///
     /// 全ての依存関係をコンストラクタで注入する（Constructor Injection）
-    /// 直接所有権を受け取り、内部でArcは使用しない
+    /// 並列処理で共有される依存関係は初期からArcで管理
     pub fn new(loader: L, hasher: H, storage: S, config: C, reporter: R, persistence: P) -> Self {
         Self {
-            loader,
-            hasher,
-            storage,
-            config,
-            reporter,
-            persistence,
+            loader: Arc::new(loader),
+            hasher: Arc::new(hasher),
+            storage: Arc::new(storage),
+            config: Arc::new(config),
+            reporter: Arc::new(reporter),
+            persistence: Arc::new(persistence),
         }
     }
 
     /// 指定されたディレクトリを並列処理
     ///
     /// ファイル発見から処理完了まで全てを管理する高レベルAPI
-    pub async fn process_directory(&self, directory: &str) -> ProcessingResult<ProcessingSummary>
-    where
-        L: Clone,
-        H: Clone,
-        R: Clone,
-        P: Clone,
-    {
+    pub async fn process_directory(&self, directory: &str) -> ProcessingResult<ProcessingSummary> {
         // ファイル発見
         let files = self.discover_image_files(directory).await?;
 
@@ -73,24 +67,19 @@ where
     /// 指定されたファイルリストを並列処理
     ///
     /// より細かい制御が必要な場合のAPI
-    pub async fn process_files(&self, files: Vec<String>) -> ProcessingResult<ProcessingSummary>
-    where
-        L: Clone,
-        H: Clone,
-        R: Clone,
-        P: Clone,
-    {
-        // 内部的にProcessingPipelineを使用（実装詳細）
-        // Pipelineが並列実行でArcを必要とするため、ここで参照からArc<T>を作成
-        let pipeline =
-            ProcessingPipeline::new(Arc::new(self.loader.clone()), Arc::new(self.hasher.clone()));
+    pub async fn process_files(&self, files: Vec<String>) -> ProcessingResult<ProcessingSummary> {
+        // 既にArcで管理されている依存関係を効率的に共有
+        let pipeline = ProcessingPipeline::new(
+            Arc::clone(&self.loader),
+            Arc::clone(&self.hasher)
+        );
 
         pipeline
             .execute(
-                files,
-                &self.config,
-                Arc::new(self.reporter.clone()),
-                Arc::new(self.persistence.clone()),
+                files, 
+                self.config.as_ref(), 
+                Arc::clone(&self.reporter), 
+                Arc::clone(&self.persistence)
             )
             .await
             .map_err(|e| {
@@ -183,7 +172,7 @@ where
         path: &str,
         config: &C,
         reporter: &R,
-        persistence: &P,
+        _persistence: &P,
     ) -> ProcessingResult<ProcessingSummary>
     where
         L: Clone,
@@ -215,15 +204,17 @@ where
         }
 
         // パイプライン実行
-        let pipeline =
-            ProcessingPipeline::new(Arc::new(self.loader.clone()), Arc::new(self.hasher.clone()));
+        let pipeline = ProcessingPipeline::new(
+            Arc::clone(&self.loader),
+            Arc::clone(&self.hasher)
+        );
 
         let mut summary = pipeline
             .execute(
-                files,
-                config,
-                Arc::new(reporter.clone()),
-                Arc::new(persistence.clone()),
+                files, 
+                config, 
+                Arc::clone(&self.reporter), 
+                Arc::clone(&self.persistence)
             )
             .await
             .map_err(|e| {
@@ -488,9 +479,9 @@ mod tests {
         assert!(summary.average_time_per_file_ms >= 0.0);
 
         // 永続化確認
-        let stored_data = engine.persistence().get_stored_data();
+        let stored_data = engine.persistence().get_stored_data().unwrap();
         assert_eq!(stored_data.len(), 2);
-        assert!(engine.persistence().is_finalized());
+        assert!(engine.persistence().is_finalized().unwrap());
     }
 
     #[tokio::test]
@@ -534,7 +525,7 @@ mod tests {
         assert_eq!(summary.processed_files, 1); // 有効な画像のみ
         assert_eq!(summary.error_count, 1); // 無効な画像
 
-        let stored_data = engine.persistence().get_stored_data();
+        let stored_data = engine.persistence().get_stored_data().unwrap();
         assert_eq!(stored_data.len(), 1);
     }
 }

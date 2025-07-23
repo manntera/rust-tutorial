@@ -83,16 +83,15 @@ mod tests {
 
         for ext in valid_extensions {
             let item = StorageItem {
-                id: format!("file.{}", ext),
-                name: format!("file.{}", ext),
+                id: format!("file.{ext}"),
+                name: format!("file.{ext}"),
                 size: 1000,
                 is_directory: false,
                 extension: Some(ext.to_string()),
             };
             assert!(
                 backend.is_image_file(&item),
-                "Extension {} should be recognized as image",
-                ext
+                "Extension {ext} should be recognized as image"
             );
         }
     }
@@ -105,16 +104,15 @@ mod tests {
 
         for ext in extensions {
             let item = StorageItem {
-                id: format!("file.{}", ext),
-                name: format!("file.{}", ext),
+                id: format!("file.{ext}"),
+                name: format!("file.{ext}"),
                 size: 1000,
                 is_directory: false,
                 extension: Some(ext.to_string()),
             };
             assert!(
                 backend.is_image_file(&item),
-                "Extension {} should be recognized as image",
-                ext
+                "Extension {ext} should be recognized as image"
             );
         }
     }
@@ -127,16 +125,15 @@ mod tests {
 
         for ext in invalid_extensions {
             let item = StorageItem {
-                id: format!("file.{}", ext),
-                name: format!("file.{}", ext),
+                id: format!("file.{ext}"),
+                name: format!("file.{ext}"),
                 size: 1000,
                 is_directory: false,
                 extension: Some(ext.to_string()),
             };
             assert!(
                 !backend.is_image_file(&item),
-                "Extension {} should not be recognized as image",
-                ext
+                "Extension {ext} should not be recognized as image"
             );
         }
     }
@@ -182,7 +179,7 @@ mod tests {
             extension: Some("jpg".to_string()),
         };
 
-        let debug_str = format!("{:?}", item);
+        let debug_str = format!("{item:?}");
         assert!(debug_str.contains("test.jpg"));
         assert!(debug_str.contains("5000"));
     }

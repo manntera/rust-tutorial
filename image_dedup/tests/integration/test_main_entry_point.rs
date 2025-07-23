@@ -299,7 +299,7 @@ mod main_unit_tests {
                 assert_eq!(threads, Some(2));
                 assert!(force);
             }
-            _ => panic!("Expected Scan command"),
+            _ => assert!(false, "Expected Scan command, got: {:?}", parsed_command),
         }
     }
 

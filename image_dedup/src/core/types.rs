@@ -21,7 +21,7 @@ pub struct ProcessingSummary {
 
 /// 個別処理の結果
 #[derive(Debug)]
-pub enum ProcessingResult {
+pub enum ProcessingOutcome {
     Success {
         file_path: String,
         hash: String,
@@ -80,7 +80,7 @@ mod tests {
             was_resized: true,
         };
 
-        let result = ProcessingResult::Success {
+        let result = ProcessingOutcome::Success {
             file_path: "/test/image.jpg".to_string(),
             hash: "abcd1234".to_string(),
             algorithm: "DCT".to_string(),
@@ -89,7 +89,7 @@ mod tests {
         };
 
         match result {
-            ProcessingResult::Success {
+            ProcessingOutcome::Success {
                 file_path,
                 hash,
                 algorithm: _,
@@ -101,20 +101,20 @@ mod tests {
                 assert_eq!(metadata.file_size, 2048);
                 assert!(metadata.was_resized);
             }
-            ProcessingResult::Error { .. } => panic!("Expected Success variant"),
+            ProcessingOutcome::Error { .. } => panic!("Expected Success variant"),
         }
     }
 
     #[test]
     fn test_processing_result_error() {
-        let result = ProcessingResult::Error {
+        let result = ProcessingOutcome::Error {
             file_path: "/test/invalid.jpg".to_string(),
             error: "Failed to load image".to_string(),
         };
 
         match result {
-            ProcessingResult::Success { .. } => panic!("Expected Error variant"),
-            ProcessingResult::Error { file_path, error } => {
+            ProcessingOutcome::Success { .. } => panic!("Expected Error variant"),
+            ProcessingOutcome::Error { file_path, error } => {
                 assert_eq!(file_path, "/test/invalid.jpg");
                 assert_eq!(error, "Failed to load image");
             }

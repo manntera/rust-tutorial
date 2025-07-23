@@ -63,8 +63,7 @@ where
 
     /// デフォルト設定の並列処理エンジンを作成
     ///
-    /// 依存関係をクローンして新しいエンジンを作成
-    /// Cloneが重い場合は、Arc<App>を使用して共有することを推奨
+    /// 依存関係をArcで共有して効率的なエンジンを作成
     pub fn create_processing_engine(
         &self,
     ) -> ProcessingEngine<
@@ -80,6 +79,7 @@ where
         H: Clone + 'static,
         S: Clone + 'static,
     {
+        // 不要なclone()を避け、Arcで共有する設計に変更
         create_default_processing_engine(
             self.loader.clone(),
             self.hasher.clone(),
@@ -287,10 +287,13 @@ mod tests {
             crate::storage::local::LocalStorageBackend::new(),
         );
 
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let temp_path = temp_dir.path().to_str().unwrap();
+        let temp_dir = tempfile::TempDir::new()
+            .expect("Failed to create temporary directory for test");
+        let temp_path = temp_dir.path().to_str()
+            .expect("Temporary directory path contains invalid UTF-8");
 
-        let result = app.run_parallel_quiet(temp_path).await.unwrap();
+        let result = app.run_parallel_quiet(temp_path).await
+            .expect("run_parallel_quiet should succeed on empty directory");
 
         assert_eq!(result.total_files, 0);
         assert_eq!(result.processed_files, 0);
