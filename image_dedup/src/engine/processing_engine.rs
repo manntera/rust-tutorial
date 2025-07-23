@@ -257,7 +257,7 @@ mod tests {
     };
     use super::*;
     use crate::{
-        image_loader::standard::StandardImageLoader, perceptual_hash::dct_hash::DCTHasher,
+        image_loader::standard::StandardImageLoader, perceptual_hash::dct_hash::DctHasher,
         storage::local::LocalStorageBackend,
     };
     use std::fs;
@@ -266,7 +266,7 @@ mod tests {
     #[test]
     fn test_processing_engine_creation() {
         let loader = StandardImageLoader::new();
-        let hasher = DCTHasher::new(8);
+        let hasher = DctHasher::new(8);
         let storage = LocalStorageBackend::new();
         let config = DefaultProcessingConfig::default();
         let reporter = ConsoleProgressReporter::quiet();
@@ -284,7 +284,7 @@ mod tests {
     #[test]
     fn test_processing_engine_direct_ownership() {
         let loader = StandardImageLoader::new();
-        let hasher = DCTHasher::new(8);
+        let hasher = DctHasher::new(8);
         let storage = LocalStorageBackend::new();
         let config = DefaultProcessingConfig::default();
         let reporter = ConsoleProgressReporter::quiet();
@@ -309,7 +309,7 @@ mod tests {
 
         let engine = ProcessingEngine::new(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             DefaultProcessingConfig::default(),
             ConsoleProgressReporter::quiet(),
@@ -329,7 +329,7 @@ mod tests {
     async fn test_process_files_empty() {
         let engine = ProcessingEngine::new(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             DefaultProcessingConfig::default(),
             ConsoleProgressReporter::quiet(),
@@ -350,7 +350,7 @@ mod tests {
 
         let engine = ProcessingEngine::new(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             DefaultProcessingConfig::default(),
             ConsoleProgressReporter::quiet(),
@@ -373,7 +373,7 @@ mod tests {
         let invalid_config = DefaultProcessingConfig::default().with_max_concurrent(0);
         let engine = ProcessingEngine::new(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             invalid_config,
             ConsoleProgressReporter::quiet(),
@@ -396,7 +396,7 @@ mod tests {
         let invalid_config = DefaultProcessingConfig::default().with_batch_size(0);
         let engine = ProcessingEngine::new(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             invalid_config,
             ConsoleProgressReporter::quiet(),
@@ -420,7 +420,7 @@ mod tests {
     async fn test_process_nonexistent_directory() {
         let engine = ProcessingEngine::new(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             DefaultProcessingConfig::default(),
             ConsoleProgressReporter::quiet(),
@@ -460,7 +460,7 @@ mod tests {
 
         let engine = ProcessingEngine::new(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             DefaultProcessingConfig::default().with_max_concurrent(2),
             ConsoleProgressReporter::quiet(),
@@ -513,7 +513,7 @@ mod tests {
 
         let engine = ProcessingEngine::new(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             DefaultProcessingConfig::default(),
             ConsoleProgressReporter::quiet(),

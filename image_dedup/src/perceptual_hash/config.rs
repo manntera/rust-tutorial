@@ -75,12 +75,12 @@ impl DynamicAlgorithmConfig {
     }
 }
 
+// Type alias for complex creator function type
+type CreatorFunction = Box<dyn Fn(&serde_json::Value) -> Result<Box<dyn PerceptualHashBackend>> + Send + Sync>;
+
 /// アルゴリズム設定レジストリ
 pub struct AlgorithmRegistry {
-    creators: HashMap<
-        String,
-        Box<dyn Fn(&serde_json::Value) -> Result<Box<dyn PerceptualHashBackend>> + Send + Sync>,
-    >,
+    creators: HashMap<String, CreatorFunction>,
     descriptions: HashMap<String, String>,
     parameter_infos: HashMap<String, Vec<ParameterInfo>>,
 }
@@ -156,15 +156,13 @@ impl Default for AlgorithmRegistry {
 
 /// デフォルトのアルゴリズムレジストリを作成
 pub fn create_default_registry() -> AlgorithmRegistry {
-    let mut registry = AlgorithmRegistry::new();
+    AlgorithmRegistry::new()
 
     // デフォルトアルゴリズムを登録
     // Note: 現在はモジュールが完全でないため、後で追加
     // registry.register::<super::dct_config::DctConfig>();
     // registry.register::<super::average_config::AverageConfig>();
     // registry.register::<super::difference_config::DifferenceConfig>();
-
-    registry
 }
 
 #[cfg(test)]

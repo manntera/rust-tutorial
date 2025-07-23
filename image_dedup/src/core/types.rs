@@ -92,8 +92,8 @@ mod tests {
             ProcessingResult::Success {
                 file_path,
                 hash,
-                algorithm,
-                hash_bits,
+                algorithm: _,
+                hash_bits: _,
                 metadata,
             } => {
                 assert_eq!(file_path, "/test/image.jpg");

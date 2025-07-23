@@ -87,7 +87,7 @@ where
 mod tests {
     use super::*;
     use crate::image_loader::standard::StandardImageLoader;
-    use crate::perceptual_hash::dct_hash::DCTHasher;
+    use crate::perceptual_hash::dct_hash::DctHasher;
     // Removed ambiguous import - using crate::core::ProcessingResult from main imports
     // Local test utilities
     const MINIMAL_PNG_DATA: &[u8] = &[
@@ -140,7 +140,7 @@ mod tests {
         let worker_handle = spawn_single_consumer(
             0,
             Arc::new(StandardImageLoader::new()),
-            Arc::new(DCTHasher::new(8)),
+            Arc::new(DctHasher::new(8)),
             work_rx,
             result_tx,
             semaphore,
@@ -165,6 +165,7 @@ mod tests {
                 file_path,
                 hash,
                 metadata,
+                ..
             } => {
                 assert!(file_path.ends_with("test.png"));
                 assert!(!hash.is_empty());
@@ -188,7 +189,7 @@ mod tests {
         let worker_handle = spawn_single_consumer(
             0,
             Arc::new(StandardImageLoader::new()),
-            Arc::new(DCTHasher::new(8)),
+            Arc::new(DctHasher::new(8)),
             work_rx,
             result_tx,
             semaphore,
@@ -229,7 +230,7 @@ mod tests {
         // Consumer pool起動
         let worker_handles = spawn_consumers(
             Arc::new(StandardImageLoader::new()),
-            Arc::new(DCTHasher::new(8)),
+            Arc::new(DctHasher::new(8)),
             work_rx,
             result_tx,
             semaphore,
@@ -301,7 +302,7 @@ mod tests {
 
         let worker_handles = spawn_consumers(
             Arc::new(StandardImageLoader::new()),
-            Arc::new(DCTHasher::new(8)),
+            Arc::new(DctHasher::new(8)),
             work_rx,
             result_tx,
             semaphore,
@@ -352,7 +353,7 @@ mod tests {
         let worker_handle = spawn_single_consumer(
             0,
             Arc::new(StandardImageLoader::new()),
-            Arc::new(DCTHasher::new(8)),
+            Arc::new(DctHasher::new(8)),
             work_rx,
             result_tx.clone(),
             semaphore,
@@ -379,7 +380,7 @@ mod tests {
 
         let worker_handles = spawn_consumers(
             Arc::new(StandardImageLoader::new()),
-            Arc::new(DCTHasher::new(8)),
+            Arc::new(DctHasher::new(8)),
             work_rx,
             result_tx,
             semaphore,

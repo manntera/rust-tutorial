@@ -115,7 +115,7 @@ where
 mod tests {
     use super::*;
     use crate::{
-        image_loader::standard::StandardImageLoader, perceptual_hash::dct_hash::DCTHasher,
+        image_loader::standard::StandardImageLoader, perceptual_hash::dct_hash::DctHasher,
         storage::local::LocalStorageBackend,
     };
     // Local test utility
@@ -151,7 +151,7 @@ mod tests {
 
         let engine = create_quiet_processing_engine(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             1,
         );
@@ -175,7 +175,7 @@ mod tests {
 
         let engine = create_quiet_processing_engine(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             1,
         );
@@ -192,7 +192,7 @@ mod tests {
     fn test_create_default_processing_engine() {
         let engine = create_default_processing_engine(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             4,
         );
@@ -205,7 +205,7 @@ mod tests {
     fn test_create_quiet_processing_engine() {
         let engine = create_quiet_processing_engine(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             4,
         );

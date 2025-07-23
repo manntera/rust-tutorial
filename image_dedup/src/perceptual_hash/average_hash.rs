@@ -23,13 +23,9 @@ impl AverageHasher {
         self.hash_size
     }
 
-    fn compute_average_hash(&self, image: &DynamicImage) -> Vec<u8> {
-        let size = self.hash_size;
 
-        // 画像をグレースケールに変換してリサイズ
-        let gray_image = image
-            .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
-            .to_luma8();
+    fn compute_average_hash_from_gray(gray_image: image::ImageBuffer<image::Luma<u8>, Vec<u8>>) -> Vec<u8> {
+        let size = gray_image.width();
 
         // 平均輝度を計算
         let total: u32 = gray_image.pixels().map(|p| p[0] as u32).sum();
@@ -68,9 +64,11 @@ impl PerceptualHashBackend for AverageHasher {
         let start_time = Instant::now();
 
         let hash_data = tokio::task::spawn_blocking({
-            let image = image.clone();
-            let hasher = self.clone();
-            move || hasher.compute_average_hash(&image)
+            let size = self.hash_size;
+            let gray_image = image
+                .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
+                .to_luma8();
+            move || Self::compute_average_hash_from_gray(gray_image)
         })
         .await?;
 
@@ -132,13 +130,11 @@ impl DifferenceHasher {
         self.hash_size
     }
 
-    fn compute_difference_hash(&self, image: &DynamicImage) -> Vec<u8> {
-        let size = self.hash_size;
 
-        // 画像をグレースケールに変換してリサイズ（横に1ピクセル多く）
-        let gray_image = image
-            .resize_exact(size + 1, size, image::imageops::FilterType::Lanczos3)
-            .to_luma8();
+    fn compute_difference_hash_from_gray(
+        gray_image: image::ImageBuffer<image::Luma<u8>, Vec<u8>>, 
+        size: u32
+    ) -> Vec<u8> {
 
         // 隣接ピクセル間の差分でビットを設定
         let mut hash_bits = Vec::new();
@@ -178,9 +174,11 @@ impl PerceptualHashBackend for DifferenceHasher {
         let start_time = Instant::now();
 
         let hash_data = tokio::task::spawn_blocking({
-            let image = image.clone();
-            let hasher = self.clone();
-            move || hasher.compute_difference_hash(&image)
+            let size = self.hash_size;
+            let gray_image = image
+                .resize_exact(size + 1, size, image::imageops::FilterType::Lanczos3)
+                .to_luma8();
+            move || Self::compute_difference_hash_from_gray(gray_image, size)
         })
         .await?;
 

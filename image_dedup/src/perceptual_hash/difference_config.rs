@@ -1,6 +1,5 @@
 // Differenceアルゴリズムの設定
 
-use super::PerceptualHashBackend;
 use super::average_hash::DifferenceHasher;
 use super::config::{AlgorithmConfig, ParameterInfo, ParameterType};
 use anyhow::Result;
@@ -75,6 +74,7 @@ impl Default for DifferenceConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::perceptual_hash::PerceptualHashBackend;
 
     #[test]
     fn test_difference_config_creation() {

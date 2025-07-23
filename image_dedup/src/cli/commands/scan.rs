@@ -10,7 +10,6 @@ use crate::{
     storage::local::LocalStorageBackend,
 };
 use anyhow::Result;
-use serde_json::json;
 use std::path::PathBuf;
 
 /// Configuration struct for scan command to reduce argument count
@@ -147,7 +146,7 @@ pub async fn execute_scan(
     hash_size: u32,
     config_file: Option<PathBuf>,
 ) -> Result<()> {
-    let thread_count = threads.unwrap_or_else(num_cpus::get);
+    let _thread_count = threads.unwrap_or_else(num_cpus::get);
 
     let scan_config = ScanConfig {
         target_directory,
@@ -170,20 +169,20 @@ pub async fn execute_scan(
             };
             config.validate()?;
             let hasher = config.create_hasher()?;
-            return execute_scan_with_dct_hasher(scan_config, hasher).await;
+            execute_scan_with_dct_hasher(scan_config, hasher).await
         }
         "average" => {
             let config = crate::perceptual_hash::average_config::AverageConfig { size: hash_size };
             config.validate()?;
             let hasher = config.create_hasher()?;
-            return execute_scan_with_average_hasher(scan_config, hasher).await;
+            execute_scan_with_average_hasher(scan_config, hasher).await
         }
         "difference" => {
             let config =
                 crate::perceptual_hash::difference_config::DifferenceConfig { size: hash_size };
             config.validate()?;
             let hasher = config.create_hasher()?;
-            return execute_scan_with_difference_hasher(scan_config, hasher).await;
+            execute_scan_with_difference_hasher(scan_config, hasher).await
         }
         _ => {
             anyhow::bail!(
@@ -357,7 +356,7 @@ mod tests {
         let nonexistent_dir = PathBuf::from("nonexistent_directory");
         let output = PathBuf::from("output.json");
 
-        let result = execute_scan(nonexistent_dir, output, None, false).await;
+        let result = execute_scan(nonexistent_dir, output, None, false, "dct".to_string(), 8, None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("does not exist"));
     }
@@ -370,7 +369,7 @@ mod tests {
 
         let output = PathBuf::from("output.json");
 
-        let result = execute_scan(file_path, output, None, false).await;
+        let result = execute_scan(file_path, output, None, false, "dct".to_string(), 8, None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not a directory"));
     }
@@ -383,7 +382,7 @@ mod tests {
 
         let target_dir = TempDir::new().unwrap();
 
-        let result = execute_scan(target_dir.path().to_path_buf(), output, None, false).await;
+        let result = execute_scan(target_dir.path().to_path_buf(), output, None, false, "dct".to_string(), 8, None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
     }

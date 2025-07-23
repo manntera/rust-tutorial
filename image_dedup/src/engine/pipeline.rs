@@ -125,13 +125,13 @@ where
 mod tests {
     use super::*;
     use crate::image_loader::standard::StandardImageLoader;
-    use crate::perceptual_hash::dct_hash::DCTHasher;
+    use crate::perceptual_hash::dct_hash::DctHasher;
     use crate::services::{DefaultProcessingConfig, MemoryHashPersistence, NoOpProgressReporter};
 
     #[tokio::test]
     async fn test_processing_pipeline_creation() {
         let loader = Arc::new(StandardImageLoader::new());
-        let hasher = Arc::new(DCTHasher::new(8));
+        let hasher = Arc::new(DctHasher::new(8));
 
         let _pipeline = ProcessingPipeline::new(loader, hasher);
 
@@ -142,7 +142,7 @@ mod tests {
     async fn test_processing_pipeline_empty_files() {
         let pipeline = ProcessingPipeline::new(
             Arc::new(StandardImageLoader::new()),
-            Arc::new(DCTHasher::new(8)),
+            Arc::new(DctHasher::new(8)),
         );
 
         let config = DefaultProcessingConfig::default();
@@ -191,7 +191,7 @@ mod tests {
         // パイプライン実行
         let pipeline = ProcessingPipeline::new(
             Arc::new(StandardImageLoader::new()),
-            Arc::new(DCTHasher::new(8)),
+            Arc::new(DctHasher::new(8)),
         );
 
         let config = DefaultProcessingConfig::default()
@@ -250,7 +250,7 @@ mod tests {
 
         let pipeline = ProcessingPipeline::new(
             Arc::new(StandardImageLoader::new()),
-            Arc::new(DCTHasher::new(8)),
+            Arc::new(DctHasher::new(8)),
         );
 
         let config = DefaultProcessingConfig::default()

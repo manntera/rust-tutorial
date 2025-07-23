@@ -12,11 +12,15 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::Mutex as AsyncMutex;
 
+// Type aliases for complex types to improve readability and satisfy clippy
+type HashStorageMap = HashMap<String, (String, String, u64, ProcessingMetadata)>;
+type StreamingBuffer = Vec<(String, String, String, u64, ProcessingMetadata)>;
+
 /// メモリ内保存の永続化実装（テスト用および開発用）
 /// モックテストにも使用可能な完全機能実装
 #[derive(Debug, Clone)]
 pub struct MemoryHashPersistence {
-    storage: Arc<Mutex<HashMap<String, (String, String, u64, ProcessingMetadata)>>>,
+    storage: Arc<Mutex<HashStorageMap>>,
     finalized: Arc<Mutex<bool>>,
 }
 
@@ -211,7 +215,7 @@ impl HashPersistence for JsonHashPersistence {
         self.initialize_file().await?;
 
         // エントリごとに個別にロックを取得
-        for (file_path, hash, algorithm, hash_bits, metadata) in results {
+        for (file_path, hash, _algorithm, hash_bits, metadata) in results {
             let entry = HashEntry {
                 file_path: file_path.clone(),
                 hash: hash.clone(),
@@ -346,11 +350,15 @@ mod tests {
             (
                 "/test2.jpg".to_string(),
                 "hash2".to_string(),
+                "DCT".to_string(),
+                0u64,
                 metadata.clone(),
             ),
             (
                 "/test3.jpg".to_string(),
                 "hash3".to_string(),
+                "DCT".to_string(),
+                0u64,
                 metadata.clone(),
             ),
         ];
@@ -447,16 +455,22 @@ mod tests {
             (
                 "/test1.jpg".to_string(),
                 "hash1".to_string(),
+                "DCT".to_string(),
+                0u64,
                 metadata.clone(),
             ),
             (
                 "/test2.png".to_string(),
                 "hash2".to_string(),
+                "DCT".to_string(),
+                0u64,
                 metadata.clone(),
             ),
             (
                 "/test3.gif".to_string(),
                 "hash3".to_string(),
+                "DCT".to_string(),
+                0u64,
                 metadata.clone(),
             ),
         ];
@@ -500,11 +514,15 @@ mod tests {
             (
                 "/batch1_1.jpg".to_string(),
                 "hash1_1".to_string(),
+                "DCT".to_string(),
+                0u64,
                 metadata.clone(),
             ),
             (
                 "/batch1_2.jpg".to_string(),
                 "hash1_2".to_string(),
+                "DCT".to_string(),
+                0u64,
                 metadata.clone(),
             ),
         ];
@@ -513,16 +531,22 @@ mod tests {
             (
                 "/batch2_1.jpg".to_string(),
                 "hash2_1".to_string(),
+                "DCT".to_string(),
+                0u64,
                 metadata.clone(),
             ),
             (
                 "/batch2_2.jpg".to_string(),
                 "hash2_2".to_string(),
+                "DCT".to_string(),
+                0u64,
                 metadata.clone(),
             ),
             (
                 "/batch2_3.jpg".to_string(),
                 "hash2_3".to_string(),
+                "DCT".to_string(),
+                0u64,
                 metadata.clone(),
             ),
         ];
@@ -606,7 +630,7 @@ pub struct StreamingJsonHashPersistence {
     file_path: String,
     writer: Arc<AsyncMutex<Option<BufWriter<File>>>>,
     entries_written: Arc<AsyncMutex<usize>>,
-    buffer: Arc<AsyncMutex<Vec<(String, String, String, u64, ProcessingMetadata)>>>,
+    buffer: Arc<AsyncMutex<StreamingBuffer>>,
     buffer_size: usize,
     scan_info: Arc<AsyncMutex<Option<ScanInfo>>>,
 }
@@ -965,6 +989,9 @@ mod streaming_tests {
         let json_file = temp_dir.path().join("streaming_test.json");
 
         let persistence = StreamingJsonHashPersistence::with_buffer_size(&json_file, 2);
+        
+        // スキャン情報を設定
+        persistence.set_scan_info("test".to_string(), serde_json::json!({"size": 8})).await.unwrap();
 
         let metadata = ProcessingMetadata {
             file_size: 1024,
@@ -989,15 +1016,22 @@ mod streaming_tests {
 
         persistence.finalize().await.unwrap();
 
-        // ファイル内容確認
+        // ファイル内容確認（新しいフォーマット）
         let content = tokio::fs::read_to_string(&json_file).await.unwrap();
         let json_value: Value = serde_json::from_str(&content).unwrap();
 
-        assert!(json_value.is_array());
-        let array = json_value.as_array().unwrap();
-        assert_eq!(array.len(), 3);
+        assert!(json_value.is_object());
+        
+        // scan_infoセクションの確認
+        let scan_info = &json_value["scan_info"];
+        assert_eq!(scan_info["algorithm"], "test");
+        assert_eq!(scan_info["total_files"], 3);
+        
+        // imagesセクションの確認
+        let images = json_value["images"].as_array().unwrap();
+        assert_eq!(images.len(), 3);
 
-        for (i, entry) in array.iter().enumerate() {
+        for (i, entry) in images.iter().enumerate() {
             let expected_path = format!(
                 "/test{}.{}",
                 i + 1,
@@ -1022,6 +1056,9 @@ mod streaming_tests {
         let json_file = temp_dir.path().join("batch_streaming.json");
 
         let persistence = StreamingJsonHashPersistence::with_buffer_size(&json_file, 5);
+        
+        // スキャン情報を設定
+        persistence.set_scan_info("batch_test".to_string(), serde_json::json!({"batch_size": 10})).await.unwrap();
 
         let metadata = ProcessingMetadata {
             file_size: 2048,
@@ -1036,6 +1073,8 @@ mod streaming_tests {
                 (
                     format!("/batch{i:02}.jpg"),
                     format!("batchhash{i:02}"),
+                    "algorithm".to_string(),
+                    0u64,
                     metadata.clone(),
                 )
             })
@@ -1046,11 +1085,17 @@ mod streaming_tests {
 
         let content = tokio::fs::read_to_string(&json_file).await.unwrap();
         let json_value: Value = serde_json::from_str(&content).unwrap();
-        let array = json_value.as_array().unwrap();
+        
+        // 新しいフォーマットで確認
+        assert!(json_value.is_object());
+        let scan_info = &json_value["scan_info"];
+        assert_eq!(scan_info["algorithm"], "batch_test");
+        assert_eq!(scan_info["total_files"], 10);
+        
+        let images = json_value["images"].as_array().unwrap();
+        assert_eq!(images.len(), 10);
 
-        assert_eq!(array.len(), 10);
-
-        for (i, entry) in array.iter().enumerate() {
+        for (i, entry) in images.iter().enumerate() {
             assert_eq!(entry["file_path"], format!("/batch{i:02}.jpg"));
             assert_eq!(entry["hash"], format!("batchhash{i:02}"));
             assert_eq!(entry["metadata"]["file_size"], 2048);
@@ -1063,12 +1108,21 @@ mod streaming_tests {
         let json_file = temp_dir.path().join("empty_streaming.json");
 
         let persistence = StreamingJsonHashPersistence::new(&json_file);
+        
+        // スキャン情報を設定
+        persistence.set_scan_info("empty_test".to_string(), serde_json::json!({})).await.unwrap();
+        
         persistence.finalize().await.unwrap();
 
         let content = tokio::fs::read_to_string(&json_file).await.unwrap();
         let json_value: Value = serde_json::from_str(&content).unwrap();
 
-        assert!(json_value.is_array());
-        assert_eq!(json_value.as_array().unwrap().len(), 0);
+        // 新しいフォーマットで確認
+        assert!(json_value.is_object());
+        let scan_info = &json_value["scan_info"];
+        assert_eq!(scan_info["algorithm"], "empty_test");
+        
+        let images = json_value["images"].as_array().unwrap();
+        assert_eq!(images.len(), 0);
     }
 }

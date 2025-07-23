@@ -14,20 +14,20 @@ pub struct DctHasher {
 }
 
 impl DctHasher {
-    pub fn new(size: u32) -> Result<Self> {
-        Ok(Self {
+    pub fn new(size: u32) -> Self {
+        Self {
             algorithm: HashAlgorithm::DCT { size },
             hash_size: size,
             quality_factor: 1.0,
-        })
+        }
     }
 
-    pub fn with_quality_factor(size: u32, quality_factor: f32) -> Result<Self> {
-        Ok(Self {
+    pub fn with_quality_factor(size: u32, quality_factor: f32) -> Self {
+        Self {
             algorithm: HashAlgorithm::DCT { size },
             hash_size: size,
             quality_factor,
-        })
+        }
     }
 
     pub fn get_size(&self) -> u32 {
@@ -44,17 +44,14 @@ impl PerceptualHashBackend for DctHasher {
     async fn generate_hash(&self, image: &DynamicImage) -> Result<HashResult> {
         let start_time = Instant::now();
 
-        let hash = tokio::task::spawn_blocking({
-            let image = image.clone();
-            let size = self.hash_size;
-            move || {
+        let size = self.hash_size;
+        let rgb_image = image.to_rgb8();
+        let hash = tokio::task::spawn_blocking(move || {
                 let hasher = HasherConfig::new()
                     .hash_size(size, size)
                     .hash_alg(HashAlg::Mean)
                     .preproc_dct()
                     .to_hasher();
-
-                let rgb_image = image.to_rgb8();
                 let img_hash_image = img_hash::image::ImageBuffer::from_raw(
                     rgb_image.width(),
                     rgb_image.height(),
@@ -64,7 +61,6 @@ impl PerceptualHashBackend for DctHasher {
                 let dynamic_img_hash_image =
                     img_hash::image::DynamicImage::ImageRgb8(img_hash_image);
                 hasher.hash_image(&dynamic_img_hash_image)
-            }
         })
         .await?;
 

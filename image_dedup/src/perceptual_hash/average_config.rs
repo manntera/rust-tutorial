@@ -1,6 +1,5 @@
 // Averageアルゴリズムの設定
 
-use super::PerceptualHashBackend;
 use super::average_hash::AverageHasher;
 use super::config::{AlgorithmConfig, ParameterInfo, ParameterType};
 use anyhow::Result;
@@ -75,6 +74,7 @@ impl Default for AverageConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::perceptual_hash::PerceptualHashBackend;
 
     #[test]
     fn test_average_config_creation() {

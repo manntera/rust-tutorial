@@ -1,6 +1,5 @@
 // DCTアルゴリズムの設定
 
-use super::PerceptualHashBackend;
 use super::config::{AlgorithmConfig, ParameterInfo, ParameterType};
 use super::dct_hash::DctHasher;
 use anyhow::Result;
@@ -24,7 +23,7 @@ impl AlgorithmConfig for DctConfig {
     type Algorithm = DctHasher;
 
     fn create_hasher(&self) -> Result<Self::Algorithm> {
-        DctHasher::with_quality_factor(self.size, self.quality_factor)
+        Ok(DctHasher::with_quality_factor(self.size, self.quality_factor))
     }
 
     fn algorithm_name(&self) -> &'static str {
@@ -101,6 +100,7 @@ impl Default for DctConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::perceptual_hash::PerceptualHashBackend;
 
     #[test]
     fn test_dct_config_creation() {
@@ -170,7 +170,7 @@ mod tests {
         };
         let hasher = config.create_hasher().unwrap();
 
-        assert_eq!(hasher.algorithm_name(), "DCT Hash");
+        assert_eq!(hasher.algorithm_name(), "DCT (Discrete Cosine Transform)");
 
         // 簡単な画像でテスト
         use image::DynamicImage;
