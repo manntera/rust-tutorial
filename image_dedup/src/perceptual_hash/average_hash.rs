@@ -5,10 +5,16 @@ use image::DynamicImage;
 use std::time::Instant;
 
 /// 平均値ベースの知覚ハッシュ実装
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AverageHasher {
     algorithm: HashAlgorithm,
     hash_size: u32,
+}
+
+impl Default for AverageHasher {
+    fn default() -> Self {
+        Self::new(8)
+    }
 }
 
 impl AverageHasher {

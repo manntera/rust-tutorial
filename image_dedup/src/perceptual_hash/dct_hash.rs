@@ -6,11 +6,17 @@ use img_hash::{HashAlg, HasherConfig};
 use std::time::Instant;
 
 /// DCTベースの知覚ハッシュ実装
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DctHasher {
     algorithm: HashAlgorithm,
     hash_size: u32,
     quality_factor: f32,
+}
+
+impl Default for DctHasher {
+    fn default() -> Self {
+        Self::new(8)
+    }
 }
 
 impl DctHasher {

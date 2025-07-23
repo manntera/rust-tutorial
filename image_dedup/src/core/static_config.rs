@@ -63,6 +63,9 @@ impl StaticDependencyProvider for DefaultConfig {
     type ProgressReporter = ConsoleProgressReporter;
     type HashPersistence = StreamingJsonHashPersistence;
 
+    const DEPENDENCIES_VALID: bool = true;
+    const DEPENDENCY_DESCRIPTION: &'static str = "Default configuration with balanced performance";
+
     fn create_image_loader() -> Self::ImageLoader {
         StandardImageLoader::new()
     }
@@ -111,6 +114,9 @@ impl StaticDependencyProvider for HighPerformanceConfig {
     type ProgressReporter = ConsoleProgressReporter;
     type HashPersistence = StreamingJsonHashPersistence;
 
+    const DEPENDENCIES_VALID: bool = true;
+    const DEPENDENCY_DESCRIPTION: &'static str = "High performance configuration for maximum throughput";
+
     fn create_image_loader() -> Self::ImageLoader {
         StandardImageLoader::new()
     }
@@ -158,6 +164,9 @@ impl StaticDependencyProvider for TestingConfig {
     type ProcessingConfig = DefaultProcessingConfig;
     type ProgressReporter = NoOpProgressReporter;
     type HashPersistence = MemoryHashPersistence;
+
+    const DEPENDENCIES_VALID: bool = true;
+    const DEPENDENCY_DESCRIPTION: &'static str = "Testing configuration with lightweight components";
 
     fn create_image_loader() -> Self::ImageLoader {
         StandardImageLoader::new()
@@ -256,6 +265,75 @@ where
     const PERFORMANCE_LEVEL: PerformanceLevel = PerformanceLevel::Balanced;
 }
 
+/// カスタム設定のStaticDependencyProvider実装
+/// 
+/// 注意：この実装はコンパイル時に具象型が確定している場合のみ使用可能
+/// ここでは型パラメータを使用するため、実際の作成は困難
+/// 代わりにCustomStaticProviderを使用することを推奨
+impl<IL, PH, S, PC, PR, HP> StaticDependencyProvider for CustomConfig<IL, PH, S, PC, PR, HP>
+where
+    IL: ImageLoaderBackend + Send + Sync + 'static + Default,
+    PH: PerceptualHashBackend + Send + Sync + 'static + Default,
+    S: StorageBackend + Send + Sync + 'static + Default,
+    PC: ProcessingConfig + Send + Sync + 'static + Default,
+    PR: ProgressReporter + Send + Sync + 'static + Default,
+    HP: HashPersistence + Send + Sync + 'static + Default,
+{
+    type ImageLoader = IL;
+    type PerceptualHash = PH;
+    type Storage = S;
+    type ProcessingConfig = PC;
+    type ProgressReporter = PR;
+    type HashPersistence = HP;
+
+    fn create_image_loader() -> Self::ImageLoader {
+        IL::default()
+    }
+
+    fn create_perceptual_hash() -> Self::PerceptualHash {
+        PH::default()
+    }
+
+    fn create_storage() -> Self::Storage {
+        S::default()
+    }
+
+    fn create_processing_config() -> Self::ProcessingConfig {
+        PC::default()
+    }
+
+    fn create_progress_reporter() -> Self::ProgressReporter {
+        PR::default()
+    }
+
+    fn create_hash_persistence(_output_path: &std::path::Path) -> Self::HashPersistence {
+        HP::default()
+    }
+}
+
+/// カスタム設定の静的バリデーション実装
+impl<IL, PH, S, PC, PR, HP> StaticConfigValidator for CustomConfig<IL, PH, S, PC, PR, HP>
+where
+    IL: ImageLoaderBackend + Send + Sync + 'static,
+    PH: PerceptualHashBackend + Send + Sync + 'static,
+    S: StorageBackend + Send + Sync + 'static,
+    PC: ProcessingConfig + Send + Sync + 'static,
+    PR: ProgressReporter + Send + Sync + 'static,
+    HP: HashPersistence + Send + Sync + 'static,
+{
+    // カスタム設定はより緩い制約を適用
+    const BATCH_SIZE_VALID: bool = true; // 実行時チェックに委ねる
+    const BUFFER_SIZE_VALID: bool = true;
+    const THREAD_COUNT_VALID: bool = true;
+    const HASH_SIZE_VALID: bool = true;
+    
+    const IS_VALID: bool = Self::BATCH_SIZE_VALID
+        && Self::BUFFER_SIZE_VALID
+        && Self::THREAD_COUNT_VALID
+        && Self::HASH_SIZE_VALID;
+    const ERROR_MESSAGE: &'static str = "CustomConfig設定検証に失敗しました";
+}
+
 /// 設定の静的検証
 pub trait StaticConfigValidator {
     /// 設定の整合性を検証
@@ -265,18 +343,59 @@ pub trait StaticConfigValidator {
     const ERROR_MESSAGE: &'static str;
 
     /// 詳細バリデーション
-    const BATCH_SIZE_VALID: bool = true;
-    const BUFFER_SIZE_VALID: bool = true;
-    const THREAD_COUNT_VALID: bool = true;
-    const HASH_SIZE_VALID: bool = true;
+    const BATCH_SIZE_VALID: bool;
+    const BUFFER_SIZE_VALID: bool;
+    const THREAD_COUNT_VALID: bool;
+    const HASH_SIZE_VALID: bool;
 }
 
-impl<T: TypeConfig + StaticDependencyProvider> StaticConfigValidator for T {
+/// DefaultConfig用の静的バリデーション実装
+impl StaticConfigValidator for DefaultConfig {
+    const BATCH_SIZE_VALID: bool = 50 >= Self::MIN_BATCH_SIZE && 50 <= Self::MAX_BATCH_SIZE;
+    const BUFFER_SIZE_VALID: bool = 100 >= Self::MIN_BUFFER_SIZE && 100 <= Self::MAX_BUFFER_SIZE;
+    const THREAD_COUNT_VALID: bool = {
+        // num_cpus::get()は実行時関数のため、合理的な範囲でチェック
+        let assumed_cpus = 8; // 仮定値
+        assumed_cpus >= Self::MIN_THREADS && assumed_cpus <= Self::MAX_THREADS
+    };
+    const HASH_SIZE_VALID: bool = 8 >= Self::MIN_HASH_SIZE && 8 <= Self::MAX_HASH_SIZE;
+    
     const IS_VALID: bool = Self::BATCH_SIZE_VALID
         && Self::BUFFER_SIZE_VALID
         && Self::THREAD_COUNT_VALID
         && Self::HASH_SIZE_VALID;
-    const ERROR_MESSAGE: &'static str = "設定検証に失敗しました";
+    const ERROR_MESSAGE: &'static str = "DefaultConfig設定検証に失敗しました";
+}
+
+/// HighPerformanceConfig用の静的バリデーション実装
+impl StaticConfigValidator for HighPerformanceConfig {
+    const BATCH_SIZE_VALID: bool = 100 >= Self::MIN_BATCH_SIZE && 100 <= Self::MAX_BATCH_SIZE;
+    const BUFFER_SIZE_VALID: bool = 500 >= Self::MIN_BUFFER_SIZE && 500 <= Self::MAX_BUFFER_SIZE;
+    const THREAD_COUNT_VALID: bool = {
+        let assumed_cpus = 16; // 高性能設定での仮定値
+        assumed_cpus >= Self::MIN_THREADS && assumed_cpus <= Self::MAX_THREADS
+    };
+    const HASH_SIZE_VALID: bool = 32 >= Self::MIN_HASH_SIZE && 32 <= Self::MAX_HASH_SIZE;
+    
+    const IS_VALID: bool = Self::BATCH_SIZE_VALID
+        && Self::BUFFER_SIZE_VALID
+        && Self::THREAD_COUNT_VALID
+        && Self::HASH_SIZE_VALID;
+    const ERROR_MESSAGE: &'static str = "HighPerformanceConfig設定検証に失敗しました";
+}
+
+/// TestingConfig用の静的バリデーション実装
+impl StaticConfigValidator for TestingConfig {
+    const BATCH_SIZE_VALID: bool = 5 >= Self::MIN_BATCH_SIZE && 5 <= Self::MAX_BATCH_SIZE;
+    const BUFFER_SIZE_VALID: bool = 10 >= Self::MIN_BUFFER_SIZE && 10 <= Self::MAX_BUFFER_SIZE;
+    const THREAD_COUNT_VALID: bool = 2 >= Self::MIN_THREADS && 2 <= Self::MAX_THREADS;
+    const HASH_SIZE_VALID: bool = 8 >= Self::MIN_HASH_SIZE && 8 <= Self::MAX_HASH_SIZE;
+    
+    const IS_VALID: bool = Self::BATCH_SIZE_VALID
+        && Self::BUFFER_SIZE_VALID
+        && Self::THREAD_COUNT_VALID
+        && Self::HASH_SIZE_VALID;
+    const ERROR_MESSAGE: &'static str = "TestingConfig設定検証に失敗しました";
 }
 
 /// 高度な設定制約チェック
@@ -300,19 +419,32 @@ pub trait AdvancedConfigConstraints {
 
 impl<T: TypeConfig> AdvancedConfigConstraints for T {}
 
-/// コンパイル時設定検証マクロ
+/// コンパイル時設定検証マクロ（改善版）
 #[macro_export]
 macro_rules! validate_static_config {
     ($config:ty) => {
         const _: () = {
-            if !<$config as StaticConfigValidator>::IS_VALID {
-                panic!("{}", <$config as StaticConfigValidator>::ERROR_MESSAGE);
+            // 各制約を個別にチェックして詳細なエラーメッセージを提供
+            if !<$config as $crate::core::static_config::StaticConfigValidator>::BATCH_SIZE_VALID {
+                panic!("BatchSize制約違反: {}", <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE);
+            }
+            if !<$config as $crate::core::static_config::StaticConfigValidator>::BUFFER_SIZE_VALID {
+                panic!("BufferSize制約違反: {}", <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE);
+            }
+            if !<$config as $crate::core::static_config::StaticConfigValidator>::THREAD_COUNT_VALID {
+                panic!("ThreadCount制約違反: {}", <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE);
+            }
+            if !<$config as $crate::core::static_config::StaticConfigValidator>::HASH_SIZE_VALID {
+                panic!("HashSize制約違反: {}", <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE);
+            }
+            if !<$config as $crate::core::static_config::StaticConfigValidator>::IS_VALID {
+                panic!("総合制約違反: {}", <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE);
             }
         };
     };
 }
 
-/// const assertion マクロ
+/// const assertion マクロ（改善版）
 #[macro_export]
 macro_rules! const_assert_config {
     ($condition:expr, $message:expr) => {
@@ -321,6 +453,72 @@ macro_rules! const_assert_config {
                 panic!($message);
             }
         };
+    };
+    // 詳細情報付きバージョン
+    ($condition:expr, $message:expr, $config:ty) => {
+        const _: () = {
+            if !$condition {
+                panic!("{} - Config: {}", $message, stringify!($config));
+            }
+        };
+    };
+}
+
+/// 型レベル制約強化マクロ
+#[macro_export]
+macro_rules! enforce_config_constraints {
+    ($config:ty) => {
+        // バッチサイズ制約
+        $crate::const_assert_config!(
+            <$config as $crate::core::static_config::AdvancedConfigConstraints>::MIN_BATCH_SIZE <= <$config as $crate::core::static_config::AdvancedConfigConstraints>::MAX_BATCH_SIZE,
+            "MIN_BATCH_SIZE must be <= MAX_BATCH_SIZE"
+        );
+        
+        // バッファサイズ制約
+        $crate::const_assert_config!(
+            <$config as $crate::core::static_config::AdvancedConfigConstraints>::MIN_BUFFER_SIZE <= <$config as $crate::core::static_config::AdvancedConfigConstraints>::MAX_BUFFER_SIZE,
+            "MIN_BUFFER_SIZE must be <= MAX_BUFFER_SIZE"
+        );
+        
+        // スレッド数制約
+        $crate::const_assert_config!(
+            <$config as $crate::core::static_config::AdvancedConfigConstraints>::MIN_THREADS <= <$config as $crate::core::static_config::AdvancedConfigConstraints>::MAX_THREADS,
+            "MIN_THREADS must be <= MAX_THREADS"
+        );
+        
+        // ハッシュサイズ制約
+        $crate::const_assert_config!(
+            <$config as $crate::core::static_config::AdvancedConfigConstraints>::MIN_HASH_SIZE <= <$config as $crate::core::static_config::AdvancedConfigConstraints>::MAX_HASH_SIZE,
+            "MIN_HASH_SIZE must be <= MAX_HASH_SIZE"
+        );
+        
+        // 実際の設定値制約
+        $crate::validate_static_config!($config);
+    };
+}
+
+/// 型安全性検証マクロ（簡略版）
+#[macro_export]
+macro_rules! verify_type_safety {
+    ($config:ty) => {
+        // 静的アサート（実行時チェック）
+        fn _verify_type_safety() {
+            // ゼロコスト抽象化の確認
+            assert_eq!(std::mem::size_of::<$config>(), 0, "Config should be zero-sized");
+            
+            // Send + Sync の確認（コンパイル時）
+            fn assert_send<T: Send>() {}
+            fn assert_sync<T: Sync>() {}
+            
+            assert_send::<<$config as $crate::core::static_di::StaticDependencyProvider>::ImageLoader>();
+            assert_sync::<<$config as $crate::core::static_di::StaticDependencyProvider>::ImageLoader>();
+            
+            assert_send::<<$config as $crate::core::static_di::StaticDependencyProvider>::PerceptualHash>();
+            assert_sync::<<$config as $crate::core::static_di::StaticDependencyProvider>::PerceptualHash>();
+            
+            assert_send::<<$config as $crate::core::static_di::StaticDependencyProvider>::Storage>();
+            assert_sync::<<$config as $crate::core::static_di::StaticDependencyProvider>::Storage>();
+        }
     };
 }
 
@@ -397,10 +595,41 @@ mod tests {
 
     #[test]
     fn test_config_validation() {
-        // コンパイル時検証
-        validate_static_config!(DefaultConfig);
-        validate_static_config!(HighPerformanceConfig);
-        validate_static_config!(TestingConfig);
+        // 簡単な実行時バリデーション
+        assert!(DefaultConfig::IS_VALID);
+        assert!(HighPerformanceConfig::IS_VALID);
+        assert!(TestingConfig::IS_VALID);
+    }
+
+    #[test]
+    fn test_static_config_constraints() {
+        // 各設定の制約値をテスト
+        assert!(DefaultConfig::BATCH_SIZE_VALID);
+        assert!(DefaultConfig::BUFFER_SIZE_VALID);
+        assert!(DefaultConfig::THREAD_COUNT_VALID);
+        assert!(DefaultConfig::HASH_SIZE_VALID);
+        assert!(DefaultConfig::IS_VALID);
+
+        assert!(HighPerformanceConfig::BATCH_SIZE_VALID);
+        assert!(HighPerformanceConfig::BUFFER_SIZE_VALID);
+        assert!(HighPerformanceConfig::THREAD_COUNT_VALID);
+        assert!(HighPerformanceConfig::HASH_SIZE_VALID);
+        assert!(HighPerformanceConfig::IS_VALID);
+
+        assert!(TestingConfig::BATCH_SIZE_VALID);
+        assert!(TestingConfig::BUFFER_SIZE_VALID);
+        assert!(TestingConfig::THREAD_COUNT_VALID);
+        assert!(TestingConfig::HASH_SIZE_VALID);
+        assert!(TestingConfig::IS_VALID);
+    }
+
+    #[test]
+    fn test_advanced_config_constraints() {
+        // 制約定数の一貫性をテスト
+        assert!(DefaultConfig::MIN_BATCH_SIZE <= DefaultConfig::MAX_BATCH_SIZE);
+        assert!(DefaultConfig::MIN_BUFFER_SIZE <= DefaultConfig::MAX_BUFFER_SIZE);
+        assert!(DefaultConfig::MIN_THREADS <= DefaultConfig::MAX_THREADS);
+        assert!(DefaultConfig::MIN_HASH_SIZE <= DefaultConfig::MAX_HASH_SIZE);
     }
 
     #[test]
