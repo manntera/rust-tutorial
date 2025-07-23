@@ -75,7 +75,7 @@ pub async fn execute_find_dups(
     // Read hash entries from JSON file (supporting both old and new formats)
     let json_content = std::fs::read_to_string(&hash_database)?;
     let database: HashDatabase = serde_json::from_str(&json_content)?;
-    
+
     let mut hash_entries = match database {
         HashDatabase::NewFormat(scan_result) => scan_result.images,
         HashDatabase::OldFormat(entries) => entries,
@@ -93,7 +93,7 @@ pub async fn execute_find_dups(
     while !hash_entries.is_empty() {
         let base_entry = hash_entries.remove(0);
         let base_hash = base_entry.hash_bits;
-        
+
         let mut group = DuplicateGroup {
             group_id,
             files: vec![DuplicateFile {

@@ -41,10 +41,11 @@ impl MemoryHashPersistence {
 
     /// テスト用：保存されたデータを取得
     pub fn get_stored_data(&self) -> Result<HashMap<String, (String, ProcessingMetadata)>> {
-        let storage_guard = self.storage
+        let storage_guard = self
+            .storage
             .lock()
             .map_err(|e| anyhow::anyhow!("Storage lock poisoned: {}", e))?;
-        
+
         Ok(storage_guard
             .iter()
             .map(|(k, (hash, _alg, _bits, meta))| (k.clone(), (hash.clone(), meta.clone())))
@@ -53,7 +54,8 @@ impl MemoryHashPersistence {
 
     /// テスト用：完了状態を確認
     pub fn is_finalized(&self) -> Result<bool> {
-        let finalized_guard = self.finalized
+        let finalized_guard = self
+            .finalized
             .lock()
             .map_err(|e| anyhow::anyhow!("Finalized lock poisoned: {}", e))?;
         Ok(*finalized_guard)
@@ -65,17 +67,19 @@ impl MemoryHashPersistence {
             .lock()
             .map_err(|e| anyhow::anyhow!("Storage lock poisoned: {}", e))?
             .clear();
-        
-        *self.finalized
+
+        *self
+            .finalized
             .lock()
             .map_err(|e| anyhow::anyhow!("Finalized lock poisoned: {}", e))? = false;
-        
+
         Ok(())
     }
 
     /// テスト用：特定のファイルが保存されているかチェック
     pub fn contains_file(&self, file_path: &str) -> Result<bool> {
-        let storage_guard = self.storage
+        let storage_guard = self
+            .storage
             .lock()
             .map_err(|e| anyhow::anyhow!("Storage lock poisoned: {}", e))?;
         Ok(storage_guard.contains_key(file_path))
@@ -83,7 +87,8 @@ impl MemoryHashPersistence {
 
     /// テスト用：保存されたファイル数を取得
     pub fn stored_count(&self) -> Result<usize> {
-        let storage_guard = self.storage
+        let storage_guard = self
+            .storage
             .lock()
             .map_err(|e| anyhow::anyhow!("Storage lock poisoned: {}", e))?;
         Ok(storage_guard.len())
@@ -112,7 +117,8 @@ impl HashPersistence for MemoryHashPersistence {
         &self,
         results: &[(PathBuf, String, String, u64, ProcessingMetadata)],
     ) -> Result<()> {
-        let mut storage = self.storage
+        let mut storage = self
+            .storage
             .lock()
             .map_err(|e| anyhow::anyhow!("Storage lock poisoned: {}", e))?;
         for (path, hash, algorithm, hash_bits, metadata) in results {
@@ -135,7 +141,8 @@ impl HashPersistence for MemoryHashPersistence {
     }
 
     async fn finalize(&self) -> Result<()> {
-        *self.finalized
+        *self
+            .finalized
             .lock()
             .map_err(|e| anyhow::anyhow!("Finalized lock poisoned: {}", e))? = true;
         Ok(())
@@ -261,7 +268,8 @@ impl HashPersistence for JsonHashPersistence {
 
             // より効率的な文字列処理 - 中間Vecを避ける
             let indented = {
-                let mut result = String::with_capacity(json_str.len() + json_str.matches('\n').count() * 2);
+                let mut result =
+                    String::with_capacity(json_str.len() + json_str.matches('\n').count() * 2);
                 for (i, line) in json_str.lines().enumerate() {
                     if i > 0 {
                         result.push('\n');
@@ -286,7 +294,8 @@ impl HashPersistence for JsonHashPersistence {
             // 実際の書き込み（ロックを短時間だけ保持）
             {
                 let mut writer_opt = self.writer.lock().await;
-                let writer = writer_opt.as_mut()
+                let writer = writer_opt
+                    .as_mut()
                     .ok_or_else(|| anyhow::anyhow!("Writer should be initialized"))?;
 
                 if needs_comma {
@@ -815,7 +824,9 @@ impl StreamingJsonHashPersistence {
                 // scan_infoを2スペースでインデント
                 // より効率的な文字列処理 - scan_info版
                 let indented_scan_info = {
-                    let mut result = String::with_capacity(scan_info_json.len() + scan_info_json.matches('\n').count() * 2);
+                    let mut result = String::with_capacity(
+                        scan_info_json.len() + scan_info_json.matches('\n').count() * 2,
+                    );
                     for (i, line) in scan_info_json.lines().enumerate() {
                         if i > 0 {
                             result.push('\n');
@@ -865,7 +876,8 @@ impl StreamingJsonHashPersistence {
 
             // より効率的な文字列処理 - 4スペースインデント版
             let indented = {
-                let mut result = String::with_capacity(json_str.len() + json_str.matches('\n').count() * 4);
+                let mut result =
+                    String::with_capacity(json_str.len() + json_str.matches('\n').count() * 4);
                 for (i, line) in json_str.lines().enumerate() {
                     if i > 0 {
                         result.push('\n');
@@ -986,7 +998,7 @@ impl HashPersistence for StreamingJsonHashPersistence {
             let file_exists = tokio::fs::try_exists(&self.file_path)
                 .await
                 .map_err(|e| ProcessingError::persistence(e.into()))?;
-            
+
             if !file_exists {
                 drop(writer_guard);
 
@@ -1001,7 +1013,9 @@ impl HashPersistence for StreamingJsonHashPersistence {
 
                         // より効率的な文字列処理 - 空ファイル版
                         let indented_scan_info = {
-                            let mut result = String::with_capacity(scan_info_json.len() + scan_info_json.matches('\n').count() * 2);
+                            let mut result = String::with_capacity(
+                                scan_info_json.len() + scan_info_json.matches('\n').count() * 2,
+                            );
                             for (i, line) in scan_info_json.lines().enumerate() {
                                 if i > 0 {
                                     result.push('\n');

@@ -10,7 +10,7 @@ pub mod processing;
 pub use config::DefaultProcessingConfig;
 pub use monitoring::{ConsoleProgressReporter, NoOpProgressReporter};
 pub use persistence::{
-    JsonHashPersistence, MemoryHashPersistence, StreamingJsonHashPersistence,
-    spawn_result_collector,
+    spawn_result_collector, JsonHashPersistence, MemoryHashPersistence,
+    StreamingJsonHashPersistence,
 };
 pub use processing::process_single_file;

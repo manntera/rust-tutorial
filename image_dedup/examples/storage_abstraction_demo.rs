@@ -1,6 +1,6 @@
 use anyhow::Result;
-use image_dedup::perceptual_hash::{PerceptualHashBackend, dct_hash::DctHasher};
-use image_dedup::storage::{StorageBackend, local::LocalStorageBackend};
+use image_dedup::perceptual_hash::{dct_hash::DctHasher, PerceptualHashBackend};
+use image_dedup::storage::{local::LocalStorageBackend, StorageBackend};
 use std::fs;
 use std::path::Path;
 

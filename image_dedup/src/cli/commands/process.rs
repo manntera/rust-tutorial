@@ -172,7 +172,9 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn create_test_duplicate_report(groups: Vec<DuplicateGroup>) -> Result<String, serde_json::Error> {
+    fn create_test_duplicate_report(
+        groups: Vec<DuplicateGroup>,
+    ) -> Result<String, serde_json::Error> {
         let report = DuplicatesReport {
             total_groups: groups.len(),
             total_duplicates: groups.iter().map(|g| g.files.len().saturating_sub(1)).sum(),

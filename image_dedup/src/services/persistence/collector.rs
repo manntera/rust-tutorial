@@ -3,7 +3,10 @@
 use crate::core::types::ProcessingOutcome;
 use crate::core::{HashPersistence, ProgressReporter};
 use anyhow::Result;
-use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use tokio::sync::mpsc;
 
 /// Collector: 結果収集と永続化

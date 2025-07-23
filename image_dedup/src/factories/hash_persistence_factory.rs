@@ -1,6 +1,6 @@
 //! HashPersistenceFactory - ハッシュ永続化の Factory Pattern 実装
 
-use super::{ComponentFactoryWithPath, ComponentConfig};
+use super::{ComponentConfig, ComponentFactoryWithPath};
 use crate::core::HashPersistence;
 use crate::services::{JsonHashPersistence, MemoryHashPersistence, StreamingJsonHashPersistence};
 use anyhow::Result;
@@ -21,25 +21,26 @@ impl Default for HashPersistenceFactory {
 }
 
 impl ComponentFactoryWithPath<Box<dyn HashPersistence>> for HashPersistenceFactory {
-    fn create(&self, config: &ComponentConfig, output_path: &Path) -> Result<Box<dyn HashPersistence>> {
+    fn create(
+        &self,
+        config: &ComponentConfig,
+        output_path: &Path,
+    ) -> Result<Box<dyn HashPersistence>> {
         match config.implementation.as_str() {
-            "json" => {
-                Ok(Box::new(JsonHashPersistence::new(output_path)))
-            }
+            "json" => Ok(Box::new(JsonHashPersistence::new(output_path))),
             "streaming_json" => {
-                let buffer_size = config.parameters
+                let buffer_size = config
+                    .parameters
                     .get("buffer_size")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(100) as usize;
-                
+
                 Ok(Box::new(StreamingJsonHashPersistence::with_buffer_size(
                     output_path,
                     buffer_size,
                 )))
             }
-            "memory" => {
-                Ok(Box::new(MemoryHashPersistence::new()))
-            }
+            "memory" => Ok(Box::new(MemoryHashPersistence::new())),
             _ => anyhow::bail!(
                 "未サポートのHashPersistence実装: {}. 利用可能: json, streaming_json, memory",
                 config.implementation
@@ -87,9 +88,12 @@ mod tests {
         let factory = HashPersistenceFactory::new();
         let temp_dir = TempDir::new().unwrap();
         let output_path = temp_dir.path().join("test_streaming.json");
-        let config = ComponentConfig::new("streaming_json", json!({
-            "buffer_size": 50
-        }));
+        let config = ComponentConfig::new(
+            "streaming_json",
+            json!({
+                "buffer_size": 50
+            }),
+        );
 
         let persistence = factory.create(&config, &output_path);
         assert!(persistence.is_ok());
@@ -127,7 +131,9 @@ mod tests {
         let result = factory.create(&config, &output_path);
         assert!(result.is_err());
         if let Err(error) = result {
-            assert!(error.to_string().contains("未サポートのHashPersistence実装"));
+            assert!(error
+                .to_string()
+                .contains("未サポートのHashPersistence実装"));
         }
     }
 
@@ -135,14 +141,14 @@ mod tests {
     fn test_available_implementations() {
         let factory = HashPersistenceFactory::new();
         let implementations = factory.available_implementations();
-        
+
         assert_eq!(implementations, vec!["json", "streaming_json", "memory"]);
     }
 
     #[test]
     fn test_get_description() {
         let factory = HashPersistenceFactory::new();
-        
+
         assert!(factory.get_description("json").is_some());
         assert!(factory.get_description("streaming_json").is_some());
         assert!(factory.get_description("memory").is_some());

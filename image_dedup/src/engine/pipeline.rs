@@ -9,7 +9,10 @@ use crate::{
     services::persistence::spawn_result_collector,
 };
 use anyhow::Result;
-use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use std::time::Instant;
 use tokio::sync::mpsc;
 
@@ -217,11 +220,9 @@ mod tests {
         assert_eq!(stored_data.len(), 3);
 
         for i in 0..3 {
-            assert!(
-                stored_data
-                    .iter()
-                    .any(|(path, _)| path.contains(&format!("valid{i}.png")))
-            );
+            assert!(stored_data
+                .iter()
+                .any(|(path, _)| path.contains(&format!("valid{i}.png"))));
         }
     }
 

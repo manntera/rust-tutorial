@@ -4,8 +4,7 @@
 use super::ProcessingEngine;
 use crate::{
     core::{
-        HashPersistence, ProcessingConfig, ProcessingSummary, ProgressReporter,
-        ProcessingResult,
+        HashPersistence, ProcessingConfig, ProcessingResult, ProcessingSummary, ProgressReporter,
     },
     image_loader::ImageLoaderBackend,
     perceptual_hash::PerceptualHashBackend,

@@ -1,5 +1,5 @@
 //! 静的ディスパッチファクトリーシステム
-//! 
+//!
 //! コンパイル時に型が確定するファクトリーパターン：
 //! - StaticComponentFactory: 型安全なコンポーネント作成
 //! - TypeSafeBuilder: コンパイル時バリデーション付きビルダー
@@ -7,39 +7,32 @@
 
 use crate::{
     core::static_di::StaticDependencyProvider,
-    image_loader::{ImageLoaderBackend, standard::StandardImageLoader},
+    image_loader::{standard::StandardImageLoader, ImageLoaderBackend},
     perceptual_hash::{
-        PerceptualHashBackend,
-        average_hash::AverageHasher,
-        average_config::AverageConfig,
-        dct_hash::DctHasher,
-        dct_config::DctConfig,
-        config::AlgorithmConfig,
+        average_config::AverageConfig, average_hash::AverageHasher, config::AlgorithmConfig,
+        dct_config::DctConfig, dct_hash::DctHasher, PerceptualHashBackend,
     },
-    storage::{StorageBackend, local::LocalStorageBackend},
     services::{
-        DefaultProcessingConfig,
-        ConsoleProgressReporter,
-        NoOpProgressReporter,
-        StreamingJsonHashPersistence,
-        MemoryHashPersistence,
+        ConsoleProgressReporter, DefaultProcessingConfig, MemoryHashPersistence,
+        NoOpProgressReporter, StreamingJsonHashPersistence,
     },
+    storage::{local::LocalStorageBackend, StorageBackend},
 };
 use std::marker::PhantomData;
 
 /// 静的コンポーネントファクトリー
-/// 
+///
 /// 型パラメータで作成するコンポーネントを指定し、
 /// コンパイル時に全ての型が確定
 pub trait StaticComponentFactory<T> {
     /// コンポーネントを作成
     fn create() -> T;
-    
+
     /// コンポーネントの型名を取得
     fn type_name() -> &'static str {
         std::any::type_name::<T>()
     }
-    
+
     /// コンポーネントの説明を取得
     fn description() -> &'static str;
 }
@@ -48,12 +41,12 @@ pub trait StaticComponentFactory<T> {
 pub trait StaticComponentFactoryWithPath<T> {
     /// コンポーネントを作成（パス付き）
     fn create(output_path: &std::path::Path) -> T;
-    
+
     /// コンポーネントの型名を取得
     fn type_name() -> &'static str {
         std::any::type_name::<T>()
     }
-    
+
     /// コンポーネントの説明を取得
     fn description() -> &'static str;
 }
@@ -61,13 +54,13 @@ pub trait StaticComponentFactoryWithPath<T> {
 /// StandardImageLoaderファクトリー
 pub struct StandardImageLoaderFactory<const MAX_DIMENSION: u32>;
 
-impl<const MAX_DIMENSION: u32> StaticComponentFactory<StandardImageLoader> 
-    for StandardImageLoaderFactory<MAX_DIMENSION> 
+impl<const MAX_DIMENSION: u32> StaticComponentFactory<StandardImageLoader>
+    for StandardImageLoaderFactory<MAX_DIMENSION>
 {
     fn create() -> StandardImageLoader {
         StandardImageLoader::new()
     }
-    
+
     fn description() -> &'static str {
         "標準画像ローダー - サイズ制限付き"
     }
@@ -76,14 +69,14 @@ impl<const MAX_DIMENSION: u32> StaticComponentFactory<StandardImageLoader>
 /// AverageHashファクトリー
 pub struct AverageHashFactory<const SIZE: u32>;
 
-impl<const SIZE: u32> StaticComponentFactory<AverageHasher> 
-    for AverageHashFactory<SIZE> 
-{
+impl<const SIZE: u32> StaticComponentFactory<AverageHasher> for AverageHashFactory<SIZE> {
     fn create() -> AverageHasher {
         let config = AverageConfig { size: SIZE };
-        config.create_hasher().expect("Failed to create Average hasher")
+        config
+            .create_hasher()
+            .expect("Failed to create Average hasher")
     }
-    
+
     fn description() -> &'static str {
         "平均ハッシュアルゴリズム"
     }
@@ -92,14 +85,15 @@ impl<const SIZE: u32> StaticComponentFactory<AverageHasher>
 /// DctHashファクトリー
 pub struct DctHashFactory<const SIZE: u32>;
 
-impl<const SIZE: u32> StaticComponentFactory<DctHasher> 
-    for DctHashFactory<SIZE> 
-{
+impl<const SIZE: u32> StaticComponentFactory<DctHasher> for DctHashFactory<SIZE> {
     fn create() -> DctHasher {
-        let config = DctConfig { size: SIZE, quality_factor: 1.0 };
+        let config = DctConfig {
+            size: SIZE,
+            quality_factor: 1.0,
+        };
         config.create_hasher().expect("Failed to create DCT hasher")
     }
-    
+
     fn description() -> &'static str {
         "DCTハッシュアルゴリズム"
     }
@@ -112,7 +106,7 @@ impl StaticComponentFactory<LocalStorageBackend> for LocalStorageFactory {
     fn create() -> LocalStorageBackend {
         LocalStorageBackend::new()
     }
-    
+
     fn description() -> &'static str {
         "ローカルファイルシステムストレージ"
     }
@@ -127,19 +121,19 @@ pub struct DefaultProcessingConfigFactory<
 >;
 
 impl<
-    const MAX_CONCURRENT: usize,
-    const BUFFER_SIZE: usize,
-    const BATCH_SIZE: usize,
-    const ENABLE_PROGRESS: bool,
-> StaticComponentFactory<DefaultProcessingConfig> 
-    for DefaultProcessingConfigFactory<MAX_CONCURRENT, BUFFER_SIZE, BATCH_SIZE, ENABLE_PROGRESS> 
+        const MAX_CONCURRENT: usize,
+        const BUFFER_SIZE: usize,
+        const BATCH_SIZE: usize,
+        const ENABLE_PROGRESS: bool,
+    > StaticComponentFactory<DefaultProcessingConfig>
+    for DefaultProcessingConfigFactory<MAX_CONCURRENT, BUFFER_SIZE, BATCH_SIZE, ENABLE_PROGRESS>
 {
     fn create() -> DefaultProcessingConfig {
         DefaultProcessingConfig::new(MAX_CONCURRENT)
             .with_buffer_size(BUFFER_SIZE)
             .with_batch_size(BATCH_SIZE)
     }
-    
+
     fn description() -> &'static str {
         "デフォルト処理設定"
     }
@@ -148,8 +142,8 @@ impl<
 /// ConsoleProgressReporterファクトリー
 pub struct ConsoleProgressReporterFactory<const QUIET: bool>;
 
-impl<const QUIET: bool> StaticComponentFactory<ConsoleProgressReporter> 
-    for ConsoleProgressReporterFactory<QUIET> 
+impl<const QUIET: bool> StaticComponentFactory<ConsoleProgressReporter>
+    for ConsoleProgressReporterFactory<QUIET>
 {
     fn create() -> ConsoleProgressReporter {
         if QUIET {
@@ -158,7 +152,7 @@ impl<const QUIET: bool> StaticComponentFactory<ConsoleProgressReporter>
             ConsoleProgressReporter::new()
         }
     }
-    
+
     fn description() -> &'static str {
         "コンソール進捗報告"
     }
@@ -171,7 +165,7 @@ impl StaticComponentFactory<NoOpProgressReporter> for NoOpProgressReporterFactor
     fn create() -> NoOpProgressReporter {
         NoOpProgressReporter::new()
     }
-    
+
     fn description() -> &'static str {
         "進捗報告なし"
     }
@@ -180,13 +174,13 @@ impl StaticComponentFactory<NoOpProgressReporter> for NoOpProgressReporterFactor
 /// StreamingJsonHashPersistenceファクトリー
 pub struct StreamingJsonHashPersistenceFactory<const BUFFER_SIZE: usize>;
 
-impl<const BUFFER_SIZE: usize> StaticComponentFactoryWithPath<StreamingJsonHashPersistence> 
-    for StreamingJsonHashPersistenceFactory<BUFFER_SIZE> 
+impl<const BUFFER_SIZE: usize> StaticComponentFactoryWithPath<StreamingJsonHashPersistence>
+    for StreamingJsonHashPersistenceFactory<BUFFER_SIZE>
 {
     fn create(output_path: &std::path::Path) -> StreamingJsonHashPersistence {
         StreamingJsonHashPersistence::new(output_path)
     }
-    
+
     fn description() -> &'static str {
         "ストリーミングJSON永続化"
     }
@@ -199,16 +193,16 @@ impl StaticComponentFactoryWithPath<MemoryHashPersistence> for MemoryHashPersist
     fn create(_output_path: &std::path::Path) -> MemoryHashPersistence {
         MemoryHashPersistence::new()
     }
-    
+
     fn description() -> &'static str {
         "メモリ内永続化"
     }
 }
 
 /// 型安全な静的DIコンテナビルダー
-/// 
+///
 /// コンパイル時に型が確定し、不正な組み合わせを防ぐ
-pub struct StaticDIBuilder<IL, PH, S, PC, PR, HP> 
+pub struct StaticDIBuilder<IL, PH, S, PC, PR, HP>
 where
     IL: ImageLoaderBackend + Send + Sync + 'static,
     PH: PerceptualHashBackend + Send + Sync + 'static,
@@ -289,8 +283,7 @@ impl<IL, PH, S, PC, PR, HP> CustomStaticProvider<IL, PH, S, PC, PR, HP> {
     }
 }
 
-impl<IL, PH, S, PC, PR, HP> StaticDependencyProvider 
-    for CustomStaticProvider<IL, PH, S, PC, PR, HP>
+impl<IL, PH, S, PC, PR, HP> StaticDependencyProvider for CustomStaticProvider<IL, PH, S, PC, PR, HP>
 where
     IL: ImageLoaderBackend + Send + Sync + 'static + Default,
     PH: PerceptualHashBackend + Send + Sync + 'static + Default,
@@ -365,7 +358,8 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let output_path = temp_dir.path().join("test.json");
 
-        let _streaming_persistence = StreamingJsonHashPersistenceFactory::<100>::create(&output_path);
+        let _streaming_persistence =
+            StreamingJsonHashPersistenceFactory::<100>::create(&output_path);
         let _memory_persistence = MemoryHashPersistenceFactory::create(&output_path);
     }
 

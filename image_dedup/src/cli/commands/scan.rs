@@ -53,7 +53,7 @@ pub async fn execute_scan_with_container(
 
     // Resolve all dependencies from container
     let dependencies = container.resolve_all_dependencies(&config.output)?;
-    
+
     // Build processing engine using resolved dependencies
     let engine = dependencies.create_processing_engine();
 
@@ -128,35 +128,49 @@ pub async fn execute_scan(
 
     // DIコンテナを構築（アルゴリズムとパラメータを指定）
     let thread_count = threads.unwrap_or_else(num_cpus::get);
-    
+
     let quality_factor = if algorithm == "dct" { 1.0 } else { 0.0 };
-    
+
     let container = DependencyContainerBuilder::new()
-        .with_image_loader("standard", serde_json::json!({
-            "max_dimension": 512
-        }))
-        .with_perceptual_hash(&algorithm, serde_json::json!({
-            "size": hash_size,
-            "quality_factor": quality_factor
-        }))
+        .with_image_loader(
+            "standard",
+            serde_json::json!({
+                "max_dimension": 512
+            }),
+        )
+        .with_perceptual_hash(
+            &algorithm,
+            serde_json::json!({
+                "size": hash_size,
+                "quality_factor": quality_factor
+            }),
+        )
         .with_storage("local", serde_json::json!({}))
-        .with_processing_config("default", serde_json::json!({
-            "max_concurrent": thread_count * 2,
-            "buffer_size": 100,
-            "batch_size": 50,
-            "enable_progress": true
-        }))
-        .with_progress_reporter("console", serde_json::json!({
-            "quiet": false
-        }))
-        .with_hash_persistence("streaming_json", serde_json::json!({
-            "buffer_size": 100
-        }))
+        .with_processing_config(
+            "default",
+            serde_json::json!({
+                "max_concurrent": thread_count * 2,
+                "buffer_size": 100,
+                "batch_size": 50,
+                "enable_progress": true
+            }),
+        )
+        .with_progress_reporter(
+            "console",
+            serde_json::json!({
+                "quiet": false
+            }),
+        )
+        .with_hash_persistence(
+            "streaming_json",
+            serde_json::json!({
+                "buffer_size": 100
+            }),
+        )
         .build();
 
     execute_scan_with_container(scan_config, container).await
 }
-
 
 /// 設定ファイルから読み込んでスキャンを実行
 async fn execute_scan_from_config_file(config: ScanConfig, config_path: PathBuf) -> Result<()> {
@@ -167,12 +181,27 @@ async fn execute_scan_from_config_file(config: ScanConfig, config_path: PathBuf)
         .map_err(|e| anyhow::anyhow!("設定ファイルからのDIコンテナ作成エラー: {}", e))?;
 
     println!("✅ 設定ファイルから依存関係を正常に読み込みました");
-    println!("🔧 ImageLoader: {}", container.config().image_loader.implementation);
-    println!("🔧 PerceptualHash: {}", container.config().perceptual_hash.implementation);
+    println!(
+        "🔧 ImageLoader: {}",
+        container.config().image_loader.implementation
+    );
+    println!(
+        "🔧 PerceptualHash: {}",
+        container.config().perceptual_hash.implementation
+    );
     println!("🔧 Storage: {}", container.config().storage.implementation);
-    println!("🔧 ProcessingConfig: {}", container.config().processing_config.implementation);
-    println!("🔧 ProgressReporter: {}", container.config().progress_reporter.implementation);
-    println!("🔧 HashPersistence: {}", container.config().hash_persistence.implementation);
+    println!(
+        "🔧 ProcessingConfig: {}",
+        container.config().processing_config.implementation
+    );
+    println!(
+        "🔧 ProgressReporter: {}",
+        container.config().progress_reporter.implementation
+    );
+    println!(
+        "🔧 HashPersistence: {}",
+        container.config().hash_persistence.implementation
+    );
 
     execute_scan_with_container(config, container).await
 }

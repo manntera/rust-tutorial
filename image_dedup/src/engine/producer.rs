@@ -23,7 +23,7 @@ pub fn spawn_producer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::{Duration, timeout};
+    use tokio::time::{timeout, Duration};
 
     #[tokio::test]
     async fn test_producer_sends_all_files() {

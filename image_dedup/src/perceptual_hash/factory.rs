@@ -2,8 +2,8 @@
 
 use super::config::{AlgorithmConfig, AlgorithmRegistry, DynamicAlgorithmConfig};
 use super::{
-    PerceptualHashBackend, average_config::AverageConfig, dct_config::DctConfig,
-    difference_config::DifferenceConfig,
+    average_config::AverageConfig, dct_config::DctConfig, difference_config::DifferenceConfig,
+    PerceptualHashBackend,
 };
 use anyhow::Result;
 

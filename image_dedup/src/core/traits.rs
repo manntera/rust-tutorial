@@ -75,7 +75,9 @@ impl ProgressReporter for Box<dyn ProgressReporter> {
     }
 
     async fn report_completed(&self, total_processed: usize, total_errors: usize) {
-        self.as_ref().report_completed(total_processed, total_errors).await
+        self.as_ref()
+            .report_completed(total_processed, total_errors)
+            .await
     }
 }
 

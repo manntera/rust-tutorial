@@ -1,6 +1,6 @@
 //! ProcessingConfigFactory - 処理設定の Factory Pattern 実装
 
-use super::{ComponentFactory, ComponentConfig};
+use super::{ComponentConfig, ComponentFactory};
 use crate::core::ProcessingConfig;
 use crate::services::DefaultProcessingConfig;
 use anyhow::Result;
@@ -23,23 +23,27 @@ impl ComponentFactory<Box<dyn ProcessingConfig>> for ProcessingConfigFactory {
     fn create(&self, config: &ComponentConfig) -> Result<Box<dyn ProcessingConfig>> {
         match config.implementation.as_str() {
             "default" => {
-                let max_concurrent = config.parameters
+                let max_concurrent = config
+                    .parameters
                     .get("max_concurrent")
                     .and_then(|v| v.as_u64())
                     .map(|v| v as usize)
                     .unwrap_or_else(|| num_cpus::get().max(1) * 2);
-                
-                let buffer_size = config.parameters
+
+                let buffer_size = config
+                    .parameters
                     .get("buffer_size")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(100) as usize;
-                
-                let batch_size = config.parameters
+
+                let batch_size = config
+                    .parameters
                     .get("batch_size")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(50) as usize;
-                
-                let enable_progress = config.parameters
+
+                let enable_progress = config
+                    .parameters
                     .get("enable_progress")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(true);
@@ -49,7 +53,7 @@ impl ComponentFactory<Box<dyn ProcessingConfig>> for ProcessingConfigFactory {
                     .with_buffer_size(buffer_size)
                     .with_batch_size(batch_size)
                     .with_progress_reporting(enable_progress);
-                
+
                 Ok(Box::new(processing_config))
             }
             _ => anyhow::bail!(
@@ -79,16 +83,19 @@ mod tests {
     #[test]
     fn test_create_default_processing_config() {
         let factory = ProcessingConfigFactory::new();
-        let config = ComponentConfig::new("default", json!({
-            "max_concurrent": 4,
-            "buffer_size": 200,
-            "batch_size": 25,
-            "enable_progress": false
-        }));
+        let config = ComponentConfig::new(
+            "default",
+            json!({
+                "max_concurrent": 4,
+                "buffer_size": 200,
+                "batch_size": 25,
+                "enable_progress": false
+            }),
+        );
 
         let processing_config = factory.create(&config);
         assert!(processing_config.is_ok());
-        
+
         let config_instance = processing_config.unwrap();
         assert_eq!(config_instance.max_concurrent_tasks(), 4);
         assert_eq!(config_instance.channel_buffer_size(), 200);
@@ -103,7 +110,7 @@ mod tests {
 
         let processing_config = factory.create(&config);
         assert!(processing_config.is_ok());
-        
+
         let config_instance = processing_config.unwrap();
         assert!(config_instance.max_concurrent_tasks() > 0);
         assert_eq!(config_instance.channel_buffer_size(), 100);
@@ -119,7 +126,9 @@ mod tests {
         let result = factory.create(&config);
         assert!(result.is_err());
         if let Err(error) = result {
-            assert!(error.to_string().contains("未サポートのProcessingConfig実装"));
+            assert!(error
+                .to_string()
+                .contains("未サポートのProcessingConfig実装"));
         }
     }
 
@@ -127,14 +136,14 @@ mod tests {
     fn test_available_implementations() {
         let factory = ProcessingConfigFactory::new();
         let implementations = factory.available_implementations();
-        
+
         assert_eq!(implementations, vec!["default"]);
     }
 
     #[test]
     fn test_get_description() {
         let factory = ProcessingConfigFactory::new();
-        
+
         assert!(factory.get_description("default").is_some());
         assert!(factory.get_description("unknown").is_none());
     }

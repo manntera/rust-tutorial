@@ -167,17 +167,13 @@ mod tests {
             .unwrap();
 
         assert_eq!(items.len(), 3); // root.jpg + subdir + nested.png
-        assert!(
-            items
-                .iter()
-                .any(|i| i.name == "root.jpg" && !i.is_directory)
-        );
+        assert!(items
+            .iter()
+            .any(|i| i.name == "root.jpg" && !i.is_directory));
         assert!(items.iter().any(|i| i.name == "subdir" && i.is_directory));
-        assert!(
-            items
-                .iter()
-                .any(|i| i.name == "nested.png" && !i.is_directory)
-        );
+        assert!(items
+            .iter()
+            .any(|i| i.name == "nested.png" && !i.is_directory));
     }
 
     #[tokio::test]
@@ -269,12 +265,10 @@ mod tests {
 
         let result = backend.delete_item(temp_dir.path().to_str().unwrap()).await;
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Cannot delete directory")
-        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Cannot delete directory"));
     }
 
     #[tokio::test]

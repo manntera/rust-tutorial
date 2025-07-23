@@ -1,6 +1,6 @@
 //! ProgressReporterFactory - 進捗報告の Factory Pattern 実装
 
-use super::{ComponentFactory, ComponentConfig};
+use super::{ComponentConfig, ComponentFactory};
 use crate::core::ProgressReporter;
 use crate::services::{ConsoleProgressReporter, NoOpProgressReporter};
 use anyhow::Result;
@@ -23,22 +23,21 @@ impl ComponentFactory<Box<dyn ProgressReporter>> for ProgressReporterFactory {
     fn create(&self, config: &ComponentConfig) -> Result<Box<dyn ProgressReporter>> {
         match config.implementation.as_str() {
             "console" => {
-                let quiet = config.parameters
+                let quiet = config
+                    .parameters
                     .get("quiet")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                
+
                 let reporter = if quiet {
                     ConsoleProgressReporter::quiet()
                 } else {
                     ConsoleProgressReporter::new()
                 };
-                
+
                 Ok(Box::new(reporter))
             }
-            "noop" => {
-                Ok(Box::new(NoOpProgressReporter::new()))
-            }
+            "noop" => Ok(Box::new(NoOpProgressReporter::new())),
             _ => anyhow::bail!(
                 "未サポートのProgressReporter実装: {}. 利用可能: console, noop",
                 config.implementation
@@ -67,9 +66,12 @@ mod tests {
     #[test]
     fn test_create_console_reporter() {
         let factory = ProgressReporterFactory::new();
-        let config = ComponentConfig::new("console", json!({
-            "quiet": false
-        }));
+        let config = ComponentConfig::new(
+            "console",
+            json!({
+                "quiet": false
+            }),
+        );
 
         let reporter = factory.create(&config);
         assert!(reporter.is_ok());
@@ -78,9 +80,12 @@ mod tests {
     #[test]
     fn test_create_quiet_console_reporter() {
         let factory = ProgressReporterFactory::new();
-        let config = ComponentConfig::new("console", json!({
-            "quiet": true
-        }));
+        let config = ComponentConfig::new(
+            "console",
+            json!({
+                "quiet": true
+            }),
+        );
 
         let reporter = factory.create(&config);
         assert!(reporter.is_ok());
@@ -112,7 +117,9 @@ mod tests {
         let result = factory.create(&config);
         assert!(result.is_err());
         if let Err(error) = result {
-            assert!(error.to_string().contains("未サポートのProgressReporter実装"));
+            assert!(error
+                .to_string()
+                .contains("未サポートのProgressReporter実装"));
         }
     }
 
@@ -120,14 +127,14 @@ mod tests {
     fn test_available_implementations() {
         let factory = ProgressReporterFactory::new();
         let implementations = factory.available_implementations();
-        
+
         assert_eq!(implementations, vec!["console", "noop"]);
     }
 
     #[test]
     fn test_get_description() {
         let factory = ProgressReporterFactory::new();
-        
+
         assert!(factory.get_description("console").is_some());
         assert!(factory.get_description("noop").is_some());
         assert!(factory.get_description("unknown").is_none());

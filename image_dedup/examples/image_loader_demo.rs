@@ -1,5 +1,5 @@
 use anyhow::Result;
-use image_dedup::image_loader::{ImageLoaderBackend, LoadResult, standard::StandardImageLoader};
+use image_dedup::image_loader::{standard::StandardImageLoader, ImageLoaderBackend, LoadResult};
 use std::path::Path;
 
 #[tokio::main]

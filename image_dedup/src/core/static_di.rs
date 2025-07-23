@@ -1,5 +1,5 @@
 //! 静的ディスパッチ中心の依存関係注入システム
-//! 
+//!
 //! Rustの哲学に基づく真のゼロコスト抽象化を実現：
 //! - コンパイル時依存関係解決
 //! - 静的ディスパッチによる最適化
@@ -7,10 +7,10 @@
 
 use crate::{
     core::{HashPersistence, ProcessingConfig, ProgressReporter},
+    engine::ProcessingEngine,
     image_loader::ImageLoaderBackend,
     perceptual_hash::PerceptualHashBackend,
     storage::StorageBackend,
-    engine::ProcessingEngine,
 };
 use std::marker::PhantomData;
 
@@ -25,7 +25,7 @@ pub type StaticProcessingEngine<P> = ProcessingEngine<
 >;
 
 /// 型レベル依存関係提供者
-/// 
+///
 /// 各コンポーネントの具象型を型パラメータで指定し、
 /// コンパイル時に全ての依存関係を解決
 pub trait StaticDependencyProvider {
@@ -38,25 +38,25 @@ pub trait StaticDependencyProvider {
 
     /// ImageLoaderインスタンスを作成
     fn create_image_loader() -> Self::ImageLoader;
-    
+
     /// PerceptualHashインスタンスを作成
     fn create_perceptual_hash() -> Self::PerceptualHash;
-    
+
     /// Storageインスタンスを作成
     fn create_storage() -> Self::Storage;
-    
+
     /// ProcessingConfigインスタンスを作成
     fn create_processing_config() -> Self::ProcessingConfig;
-    
+
     /// ProgressReporterインスタンスを作成
     fn create_progress_reporter() -> Self::ProgressReporter;
-    
+
     /// HashPersistenceインスタンスを作成
     fn create_hash_persistence(output_path: &std::path::Path) -> Self::HashPersistence;
 }
 
 /// 静的DIコンテナ - コンパイル時依存関係解決
-/// 
+///
 /// PhantomDataを使用して型レベルで依存関係を管理
 /// 実行時オーバーヘッドゼロの依存関係注入を実現
 pub struct StaticDIContainer<P: StaticDependencyProvider> {
@@ -72,12 +72,12 @@ impl<P: StaticDependencyProvider> StaticDIContainer<P> {
     }
 
     /// ProcessingEngineを作成（静的ディスパッチ）
-    /// 
+    ///
     /// 全ての依存関係がコンパイル時に解決され、
     /// 実行時は直接の関数呼び出しのみが発生
     pub fn create_processing_engine(
-        &self, 
-        output_path: &std::path::Path
+        &self,
+        output_path: &std::path::Path,
     ) -> StaticProcessingEngine<P> {
         ProcessingEngine::new(
             P::create_image_loader(),
@@ -127,23 +127,16 @@ impl<P: StaticDependencyProvider> Clone for StaticDIContainer<P> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         image_loader::standard::StandardImageLoader,
         perceptual_hash::{
-            average_hash::AverageHasher, 
-            average_config::AverageConfig,
-            config::AlgorithmConfig,
+            average_config::AverageConfig, average_hash::AverageHasher, config::AlgorithmConfig,
         },
+        services::{ConsoleProgressReporter, DefaultProcessingConfig, MemoryHashPersistence},
         storage::local::LocalStorageBackend,
-        services::{
-            DefaultProcessingConfig,
-            ConsoleProgressReporter,
-            MemoryHashPersistence,
-        },
     };
 
     /// テスト用依存関係プロバイダー
@@ -163,7 +156,9 @@ mod tests {
 
         fn create_perceptual_hash() -> Self::PerceptualHash {
             let config = AverageConfig { size: 8 };
-            config.create_hasher().expect("Failed to create Average hasher")
+            config
+                .create_hasher()
+                .expect("Failed to create Average hasher")
         }
 
         fn create_storage() -> Self::Storage {
@@ -186,7 +181,7 @@ mod tests {
     #[test]
     fn test_static_di_container_creation() {
         let container = StaticDIContainer::<TestDependencyProvider>::new();
-        
+
         // コンパイル時に型が確定していることを確認
         let _loader = container.create_image_loader();
         let _hasher = container.create_perceptual_hash();
@@ -200,11 +195,11 @@ mod tests {
         let container = StaticDIContainer::<TestDependencyProvider>::new();
         let temp_dir = tempfile::TempDir::new().unwrap();
         let output_path = temp_dir.path().join("test.json");
-        
+
         let _engine = container.create_processing_engine(&output_path);
-        
+
         // 静的型エイリアスの確認
-        let _: StaticProcessingEngine<TestDependencyProvider> = 
+        let _: StaticProcessingEngine<TestDependencyProvider> =
             container.create_processing_engine(&output_path);
     }
 
@@ -220,7 +215,6 @@ mod tests {
     #[test]
     fn test_const_creation() {
         // コンパイル時作成の確認
-        const _CONTAINER: StaticDIContainer<TestDependencyProvider> = 
-            StaticDIContainer::new();
+        const _CONTAINER: StaticDIContainer<TestDependencyProvider> = StaticDIContainer::new();
     }
 }

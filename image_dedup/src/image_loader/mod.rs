@@ -31,7 +31,7 @@ pub trait ImageLoaderBackend: Send + Sync {
 
     /// 画像フォーマットを指定して読み込む
     async fn load_with_format(&self, data: &[u8], format: image::ImageFormat)
-    -> Result<LoadResult>;
+        -> Result<LoadResult>;
 
     /// 読み込み戦略の名前を取得
     fn strategy_name(&self) -> &'static str;
@@ -59,7 +59,11 @@ impl ImageLoaderBackend for Box<dyn ImageLoaderBackend> {
         self.as_ref().load_from_path(path).await
     }
 
-    async fn load_with_format(&self, data: &[u8], format: image::ImageFormat) -> Result<LoadResult> {
+    async fn load_with_format(
+        &self,
+        data: &[u8],
+        format: image::ImageFormat,
+    ) -> Result<LoadResult> {
         self.as_ref().load_with_format(data, format).await
     }
 

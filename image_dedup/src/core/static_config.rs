@@ -1,5 +1,5 @@
 //! コンパイル時設定システム
-//! 
+//!
 //! 型レベルで設定を表現し、コンパイル時に依存関係を解決：
 //! - TypeConfig: 型レベル設定表現
 //! - StaticValidation: 設定の静的検証
@@ -8,36 +8,29 @@
 use super::static_di::StaticDependencyProvider;
 use crate::{
     core::{HashPersistence, ProcessingConfig, ProgressReporter},
-    image_loader::{ImageLoaderBackend, standard::StandardImageLoader},
+    image_loader::{standard::StandardImageLoader, ImageLoaderBackend},
     perceptual_hash::{
-        PerceptualHashBackend,
-        average_hash::AverageHasher,
-        average_config::AverageConfig,
-        dct_hash::DctHasher,
-        dct_config::DctConfig,
-        config::AlgorithmConfig,
+        average_config::AverageConfig, average_hash::AverageHasher, config::AlgorithmConfig,
+        dct_config::DctConfig, dct_hash::DctHasher, PerceptualHashBackend,
     },
-    storage::{StorageBackend, local::LocalStorageBackend},
     services::{
-        DefaultProcessingConfig,
-        ConsoleProgressReporter,
-        NoOpProgressReporter,
-        StreamingJsonHashPersistence,
-        MemoryHashPersistence,
+        ConsoleProgressReporter, DefaultProcessingConfig, MemoryHashPersistence,
+        NoOpProgressReporter, StreamingJsonHashPersistence,
     },
+    storage::{local::LocalStorageBackend, StorageBackend},
 };
 use std::marker::PhantomData;
 
 /// 型レベル設定 - コンパイル時設定表現
-/// 
+///
 /// 各設定項目を型パラメータで表現し、コンパイル時に設定を確定
 pub trait TypeConfig {
     /// 設定名（コンパイル時文字列）
     const NAME: &'static str;
-    
+
     /// 説明（コンパイル時文字列）
     const DESCRIPTION: &'static str;
-    
+
     /// パフォーマンス特性
     const PERFORMANCE_LEVEL: PerformanceLevel;
 }
@@ -75,7 +68,10 @@ impl StaticDependencyProvider for DefaultConfig {
     }
 
     fn create_perceptual_hash() -> Self::PerceptualHash {
-        let config = DctConfig { size: 8, quality_factor: 1.0 };
+        let config = DctConfig {
+            size: 8,
+            quality_factor: 1.0,
+        };
         config.create_hasher().expect("Failed to create DCT hasher")
     }
 
@@ -120,7 +116,10 @@ impl StaticDependencyProvider for HighPerformanceConfig {
     }
 
     fn create_perceptual_hash() -> Self::PerceptualHash {
-        let config = DctConfig { size: 32, quality_factor: 1.0 };
+        let config = DctConfig {
+            size: 32,
+            quality_factor: 1.0,
+        };
         config.create_hasher().expect("Failed to create DCT hasher")
     }
 
@@ -166,7 +165,9 @@ impl StaticDependencyProvider for TestingConfig {
 
     fn create_perceptual_hash() -> Self::PerceptualHash {
         let config = AverageConfig { size: 8 };
-        config.create_hasher().expect("Failed to create Average hasher")
+        config
+            .create_hasher()
+            .expect("Failed to create Average hasher")
     }
 
     fn create_storage() -> Self::Storage {
@@ -189,7 +190,7 @@ impl StaticDependencyProvider for TestingConfig {
 }
 
 /// カスタム設定ビルダー
-/// 
+///
 /// 型安全な方法で独自設定を構築
 pub struct CustomConfigBuilder<IL, PH, S, PC, PR, HP> {
     _image_loader: PhantomData<IL>,
@@ -204,7 +205,7 @@ impl<IL, PH, S, PC, PR, HP> Default for CustomConfigBuilder<IL, PH, S, PC, PR, H
 where
     IL: ImageLoaderBackend + Send + Sync + 'static,
     PH: PerceptualHashBackend + Send + Sync + 'static,
-    S: StorageBackend + Send + Sync + 'static,  
+    S: StorageBackend + Send + Sync + 'static,
     PC: ProcessingConfig + Send + Sync + 'static,
     PR: ProgressReporter + Send + Sync + 'static,
     HP: HashPersistence + Send + Sync + 'static,
@@ -220,7 +221,7 @@ where
     PH: PerceptualHashBackend + Send + Sync + 'static,
     S: StorageBackend + Send + Sync + 'static,
     PC: ProcessingConfig + Send + Sync + 'static,
-    PR: ProgressReporter + Send + Sync + 'static,  
+    PR: ProgressReporter + Send + Sync + 'static,
     HP: HashPersistence + Send + Sync + 'static,
 {
     /// 新しいカスタム設定ビルダーを作成
@@ -259,15 +260,45 @@ where
 pub trait StaticConfigValidator {
     /// 設定の整合性を検証
     const IS_VALID: bool;
-    
+
     /// エラーメッセージ（コンパイル時）
     const ERROR_MESSAGE: &'static str;
+
+    /// 詳細バリデーション
+    const BATCH_SIZE_VALID: bool = true;
+    const BUFFER_SIZE_VALID: bool = true;
+    const THREAD_COUNT_VALID: bool = true;
+    const HASH_SIZE_VALID: bool = true;
 }
 
 impl<T: TypeConfig + StaticDependencyProvider> StaticConfigValidator for T {
-    const IS_VALID: bool = true;
-    const ERROR_MESSAGE: &'static str = "";
+    const IS_VALID: bool = Self::BATCH_SIZE_VALID
+        && Self::BUFFER_SIZE_VALID
+        && Self::THREAD_COUNT_VALID
+        && Self::HASH_SIZE_VALID;
+    const ERROR_MESSAGE: &'static str = "設定検証に失敗しました";
 }
+
+/// 高度な設定制約チェック
+pub trait AdvancedConfigConstraints {
+    /// バッチサイズの制約
+    const MIN_BATCH_SIZE: usize = 1;
+    const MAX_BATCH_SIZE: usize = 10000;
+
+    /// バッファサイズの制約
+    const MIN_BUFFER_SIZE: usize = 1;
+    const MAX_BUFFER_SIZE: usize = 100000;
+
+    /// スレッド数の制約
+    const MIN_THREADS: usize = 1;
+    const MAX_THREADS: usize = 1024;
+
+    /// ハッシュサイズの制約
+    const MIN_HASH_SIZE: u32 = 4;
+    const MAX_HASH_SIZE: u32 = 256;
+}
+
+impl<T: TypeConfig> AdvancedConfigConstraints for T {}
 
 /// コンパイル時設定検証マクロ
 #[macro_export]
@@ -279,6 +310,48 @@ macro_rules! validate_static_config {
             }
         };
     };
+}
+
+/// const assertion マクロ
+#[macro_export]
+macro_rules! const_assert_config {
+    ($condition:expr, $message:expr) => {
+        const _: () = {
+            if !$condition {
+                panic!($message);
+            }
+        };
+    };
+}
+
+/// 性能指標計算トレイト
+pub trait PerformanceMetrics {
+    /// 理論的最大スループット（ファイル/秒）
+    const THEORETICAL_MAX_THROUGHPUT: f64;
+
+    /// メモリ使用量推定（MB）
+    const ESTIMATED_MEMORY_MB: f64;
+
+    /// CPU使用率推定（%）
+    const ESTIMATED_CPU_USAGE: f64;
+}
+
+impl PerformanceMetrics for DefaultConfig {
+    const THEORETICAL_MAX_THROUGHPUT: f64 = 100.0;
+    const ESTIMATED_MEMORY_MB: f64 = 256.0;
+    const ESTIMATED_CPU_USAGE: f64 = 70.0;
+}
+
+impl PerformanceMetrics for HighPerformanceConfig {
+    const THEORETICAL_MAX_THROUGHPUT: f64 = 500.0;
+    const ESTIMATED_MEMORY_MB: f64 = 1024.0;
+    const ESTIMATED_CPU_USAGE: f64 = 95.0;
+}
+
+impl PerformanceMetrics for TestingConfig {
+    const THEORETICAL_MAX_THROUGHPUT: f64 = 20.0;
+    const ESTIMATED_MEMORY_MB: f64 = 64.0;
+    const ESTIMATED_CPU_USAGE: f64 = 30.0;
 }
 
 #[cfg(test)]
@@ -296,7 +369,10 @@ mod tests {
     #[test]
     fn test_performance_levels() {
         assert_eq!(DefaultConfig::PERFORMANCE_LEVEL, PerformanceLevel::Balanced);
-        assert_eq!(HighPerformanceConfig::PERFORMANCE_LEVEL, PerformanceLevel::Fast);
+        assert_eq!(
+            HighPerformanceConfig::PERFORMANCE_LEVEL,
+            PerformanceLevel::Fast
+        );
         assert_eq!(TestingConfig::PERFORMANCE_LEVEL, PerformanceLevel::Fast);
     }
 

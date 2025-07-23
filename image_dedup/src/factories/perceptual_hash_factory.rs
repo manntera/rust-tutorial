@@ -1,12 +1,9 @@
 //! PerceptualHashFactory - パーセプチュアルハッシュの Factory Pattern 実装
 
-use super::{ComponentFactory, ComponentConfig};
+use super::{ComponentConfig, ComponentFactory};
 use crate::perceptual_hash::{
-    PerceptualHashBackend,
-    average_config::AverageConfig,
-    dct_config::DctConfig,
-    difference_config::DifferenceConfig,
-    config::AlgorithmConfig,
+    average_config::AverageConfig, config::AlgorithmConfig, dct_config::DctConfig,
+    difference_config::DifferenceConfig, PerceptualHashBackend,
 };
 use anyhow::Result;
 
@@ -28,12 +25,14 @@ impl ComponentFactory<Box<dyn PerceptualHashBackend>> for PerceptualHashFactory 
     fn create(&self, config: &ComponentConfig) -> Result<Box<dyn PerceptualHashBackend>> {
         match config.implementation.as_str() {
             "dct" => {
-                let size = config.parameters
+                let size = config
+                    .parameters
                     .get("size")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(8) as u32;
-                
-                let quality_factor = config.parameters
+
+                let quality_factor = config
+                    .parameters
                     .get("quality_factor")
                     .and_then(|v| v.as_f64())
                     .unwrap_or(1.0) as f32;
@@ -42,13 +41,14 @@ impl ComponentFactory<Box<dyn PerceptualHashBackend>> for PerceptualHashFactory 
                     size,
                     quality_factor,
                 };
-                
+
                 dct_config.validate()?;
                 let hasher = dct_config.create_hasher()?;
                 Ok(Box::new(hasher))
             }
             "average" => {
-                let size = config.parameters
+                let size = config
+                    .parameters
                     .get("size")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(8) as u32;
@@ -59,7 +59,8 @@ impl ComponentFactory<Box<dyn PerceptualHashBackend>> for PerceptualHashFactory 
                 Ok(Box::new(hasher))
             }
             "difference" => {
-                let size = config.parameters
+                let size = config
+                    .parameters
                     .get("size")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(8) as u32;
@@ -102,10 +103,13 @@ mod tests {
     #[test]
     fn test_create_dct_hasher() {
         let factory = PerceptualHashFactory::new();
-        let config = ComponentConfig::new("dct", json!({
-            "size": 16,
-            "quality_factor": 0.8
-        }));
+        let config = ComponentConfig::new(
+            "dct",
+            json!({
+                "size": 16,
+                "quality_factor": 0.8
+            }),
+        );
 
         let hasher = factory.create(&config);
         assert!(hasher.is_ok());
@@ -114,9 +118,12 @@ mod tests {
     #[test]
     fn test_create_average_hasher() {
         let factory = PerceptualHashFactory::new();
-        let config = ComponentConfig::new("average", json!({
-            "size": 8
-        }));
+        let config = ComponentConfig::new(
+            "average",
+            json!({
+                "size": 8
+            }),
+        );
 
         let hasher = factory.create(&config);
         assert!(hasher.is_ok());
@@ -125,9 +132,12 @@ mod tests {
     #[test]
     fn test_create_difference_hasher() {
         let factory = PerceptualHashFactory::new();
-        let config = ComponentConfig::new("difference", json!({
-            "size": 8
-        }));
+        let config = ComponentConfig::new(
+            "difference",
+            json!({
+                "size": 8
+            }),
+        );
 
         let hasher = factory.create(&config);
         assert!(hasher.is_ok());
@@ -136,7 +146,7 @@ mod tests {
     #[test]
     fn test_create_with_default_params() {
         let factory = PerceptualHashFactory::new();
-        
+
         // DCTでデフォルトパラメータ
         let config = ComponentConfig::new("dct", json!({}));
         let hasher = factory.create(&config);
@@ -164,14 +174,14 @@ mod tests {
     fn test_available_implementations() {
         let factory = PerceptualHashFactory::new();
         let implementations = factory.available_implementations();
-        
+
         assert_eq!(implementations, vec!["dct", "average", "difference"]);
     }
 
     #[test]
     fn test_get_description() {
         let factory = PerceptualHashFactory::new();
-        
+
         assert!(factory.get_description("dct").is_some());
         assert!(factory.get_description("average").is_some());
         assert!(factory.get_description("difference").is_some());

@@ -7,20 +7,24 @@ pub mod static_config;
 pub mod static_di;
 pub mod traits;
 pub mod types;
+pub mod unified_di;
 
 // 公開API - 明示的にエクスポートして曖昧性を回避
 pub use di_container::{
-    ComponentConfig, DependencyBundle, DependencyConfig, DependencyContainer, 
-    DependencyContainerBuilder,
+    BoxedProcessingEngine, ComponentConfig, DependencyBundle, DependencyConfig,
+    DependencyContainer, DependencyContainerBuilder,
 };
 pub use error::{ProcessingError, ProcessingResult};
 pub use static_config::{
-    DefaultConfig, HighPerformanceConfig, TestingConfig, TypeConfig, 
-    PerformanceLevel, CustomConfigBuilder, CustomConfig,
+    CustomConfig, CustomConfigBuilder, DefaultConfig, HighPerformanceConfig, PerformanceLevel,
+    TestingConfig, TypeConfig,
 };
-pub use static_di::{
-    StaticDependencyProvider, StaticDIContainer, StaticProcessingEngine,
-};
+pub use static_di::{StaticDIContainer, StaticDependencyProvider, StaticProcessingEngine};
 pub use traits::{HashPersistence, ParallelProcessor, ProcessingConfig, ProgressReporter};
 pub use types::ProcessingOutcome;
 pub use types::{ProcessingMetadata, ProcessingSummary};
+pub use unified_di::{
+    DIMode, DefaultDynamicEngine, DefaultStaticEngine, HighPerformanceDynamicEngine,
+    HighPerformanceStaticEngine, PerformanceCharacteristics, ProcessingEngineFactory,
+    ProcessingEngineVariant, TestingDynamicEngine, TestingStaticEngine, UnifiedDI,
+};

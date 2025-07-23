@@ -1,14 +1,13 @@
 //! 静的ディスパッチ vs 動的ディスパッチのパフォーマンス比較
-//! 
+//!
 //! シンプルなパフォーマンス測定とレポート生成
 
 use crate::core::{
-    DependencyContainer, DefaultConfig as StaticDefaultConfig,
-    StaticDIContainer, ProcessingConfig,
+    DefaultConfig as StaticDefaultConfig, DependencyContainer, ProcessingConfig, StaticDIContainer,
 };
-use std::time::{Duration, Instant};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use std::time::{Duration, Instant};
 
 /// パフォーマンス測定結果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,8 +89,11 @@ impl PerformanceComparison {
 
         println!("  ⚡ 動的ディスパッチ: {dynamic_time:?}");
         println!("  🚀 静的ディスパッチ: {static_time:?}");
-        println!("  📈 改善: {:.2}% ({:.2}x faster)", 
-            metrics.improvement_percentage(), metrics.improvement_ratio);
+        println!(
+            "  📈 改善: {:.2}% ({:.2}x faster)",
+            metrics.improvement_percentage(),
+            metrics.improvement_ratio
+        );
 
         self.results.push(metrics);
     }
@@ -137,8 +139,11 @@ impl PerformanceComparison {
 
         println!("  ⚡ 動的ディスパッチ: {dynamic_time:?}");
         println!("  🚀 静的ディスパッチ: {static_time:?}");
-        println!("  📈 改善: {:.2}% ({:.2}x faster)", 
-            metrics.improvement_percentage(), metrics.improvement_ratio);
+        println!(
+            "  📈 改善: {:.2}% ({:.2}x faster)",
+            metrics.improvement_percentage(),
+            metrics.improvement_ratio
+        );
 
         self.results.push(metrics);
     }
@@ -177,8 +182,11 @@ impl PerformanceComparison {
 
         println!("  ⚡ 動的ディスパッチ: {dynamic_time:?}");
         println!("  🚀 静的ディスパッチ: {static_time:?}");
-        println!("  📈 改善: {:.2}% ({:.2}x faster)", 
-            metrics.improvement_percentage(), metrics.improvement_ratio);
+        println!(
+            "  📈 改善: {:.2}% ({:.2}x faster)",
+            metrics.improvement_percentage(),
+            metrics.improvement_ratio
+        );
 
         self.results.push(metrics);
     }
@@ -200,13 +208,15 @@ impl PerformanceComparison {
 
         println!("  💾 動的DIコンテナサイズ: {dynamic_size} bytes");
         println!("  🗜️  静的DIコンテナサイズ: {static_size} bytes");
-        println!("  📉 メモリ削減: {} bytes ({:.2}%)", 
+        println!(
+            "  📉 メモリ削減: {} bytes ({:.2}%)",
             dynamic_size.saturating_sub(static_size),
-            if dynamic_size > 0 { 
-                (dynamic_size.saturating_sub(static_size) as f64 / dynamic_size as f64) * 100.0 
-            } else { 
-                0.0 
-            });
+            if dynamic_size > 0 {
+                (dynamic_size.saturating_sub(static_size) as f64 / dynamic_size as f64) * 100.0
+            } else {
+                0.0
+            }
+        );
 
         self.results.push(metrics);
     }
@@ -248,13 +258,16 @@ impl PerformanceComparison {
             println!("🎯 {}", metrics.test_name);
             println!("   ⚡ 動的: {:?}", metrics.dynamic_time);
             println!("   🚀 静的: {:?}", metrics.static_time);
-            
+
             if metrics.test_name == "Memory Usage" {
                 let memory_reduction = metrics.memory_dynamic.saturating_sub(metrics.memory_static);
                 println!("   📉 メモリ削減: {memory_reduction} bytes");
             } else {
-                println!("   📈 改善: {:.2}% ({:.2}x faster)", 
-                    metrics.improvement_percentage(), metrics.improvement_ratio);
+                println!(
+                    "   📈 改善: {:.2}% ({:.2}x faster)",
+                    metrics.improvement_percentage(),
+                    metrics.improvement_ratio
+                );
             }
             println!();
         }
@@ -273,7 +286,9 @@ impl PerformanceComparison {
         println!("🎯 結論");
         println!("{}", "=".repeat(60));
 
-        let has_significant_improvement = self.results.iter()
+        let has_significant_improvement = self
+            .results
+            .iter()
             .any(|m| m.test_name != "Memory Usage" && m.improvement_percentage() > 5.0);
 
         if has_significant_improvement {
@@ -300,7 +315,10 @@ impl PerformanceComparison {
     }
 
     /// JSON形式でのレポート出力
-    pub fn export_json_report(&self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn export_json_report(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut report = HashMap::new();
         report.insert("timestamp", chrono::Utc::now().to_rfc3339());
         report.insert("test_results", serde_json::to_string(&self.results)?);
@@ -348,7 +366,7 @@ mod tests {
     fn test_di_container_benchmark() {
         let mut comparison = PerformanceComparison::new();
         comparison.benchmark_di_container_creation(10);
-        
+
         assert_eq!(comparison.results.len(), 1);
         assert_eq!(comparison.results[0].test_name, "DI Container Creation");
     }
@@ -357,7 +375,7 @@ mod tests {
     fn test_memory_benchmark() {
         let mut comparison = PerformanceComparison::new();
         comparison.benchmark_memory_usage();
-        
+
         assert_eq!(comparison.results.len(), 1);
         assert_eq!(comparison.results[0].test_name, "Memory Usage");
     }

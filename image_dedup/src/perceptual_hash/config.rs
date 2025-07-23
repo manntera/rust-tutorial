@@ -2,7 +2,7 @@
 
 use crate::perceptual_hash::PerceptualHashBackend;
 use anyhow::Result;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// アルゴリズム設定の抽象化トレイト

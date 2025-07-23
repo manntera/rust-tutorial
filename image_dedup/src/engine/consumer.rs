@@ -123,7 +123,7 @@ mod tests {
     use std::collections::HashSet;
     use std::fs;
     use tempfile::TempDir;
-    use tokio::time::{Duration, timeout};
+    use tokio::time::{timeout, Duration};
 
     #[tokio::test]
     async fn test_single_consumer_processes_files() {
@@ -263,22 +263,26 @@ mod tests {
         let processed_files: HashSet<String> = results
             .iter()
             .map(|r| match r {
-                ProcessingOutcome::Success { file_path, .. } => file_path.to_string_lossy().to_string(),
-                ProcessingOutcome::Error { file_path, .. } => file_path.to_string_lossy().to_string(),
+                ProcessingOutcome::Success { file_path, .. } => {
+                    file_path.to_string_lossy().to_string()
+                }
+                ProcessingOutcome::Error { file_path, .. } => {
+                    file_path.to_string_lossy().to_string()
+                }
             })
             .collect();
 
         for file_path in &test_files {
             assert!(processed_files.iter().any(|p| p.contains(&format!(
-                    "test{}.png",
-                    file_path
-                        .split("test")
-                        .nth(1)
-                        .unwrap()
-                        .split('.')
-                        .next()
-                        .unwrap()
-                ))));
+                "test{}.png",
+                file_path
+                    .split("test")
+                    .nth(1)
+                    .unwrap()
+                    .split('.')
+                    .next()
+                    .unwrap()
+            ))));
         }
     }
 

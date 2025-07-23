@@ -88,7 +88,9 @@ mod tests {
 
         reporter.report_started(100).await;
         reporter.report_progress(50, 100).await;
-        reporter.report_error(std::path::Path::new("/test.jpg"), "test error").await;
+        reporter
+            .report_error(std::path::Path::new("/test.jpg"), "test error")
+            .await;
         reporter.report_completed(99, 1).await;
 
         // 基本的な呼び出しが成功することを確認
@@ -110,7 +112,9 @@ mod tests {
         // 全てのメソッドを呼び出してもパニックしない
         reporter.report_started(100).await;
         reporter.report_progress(50, 100).await;
-        reporter.report_error(std::path::Path::new("/test.jpg"), "test error").await;
+        reporter
+            .report_error(std::path::Path::new("/test.jpg"), "test error")
+            .await;
         reporter.report_completed(99, 1).await;
 
         // 基本的な呼び出しが成功することを確認

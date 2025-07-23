@@ -1,5 +1,5 @@
 //! 静的ディスパッチ vs 動的ディスパッチのパフォーマンス比較実行例
-//! 
+//!
 //! 使用方法:
 //! ```
 //! cargo run --example performance_benchmark
@@ -19,11 +19,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // レポートをJSONで出力
     let report_path = std::path::Path::new("performance_report.json");
     match comparison.export_json_report(report_path) {
-        Ok(()) => println!("\n✅ 詳細レポートが {} に出力されました", report_path.display()),
+        Ok(()) => println!(
+            "\n✅ 詳細レポートが {} に出力されました",
+            report_path.display()
+        ),
         Err(e) => eprintln!("⚠️  レポート出力エラー: {e}"),
     }
 
     println!("\n🎯 パフォーマンス比較完了！");
-    
+
     Ok(())
 }

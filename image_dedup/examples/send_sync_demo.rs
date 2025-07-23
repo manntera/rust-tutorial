@@ -1,4 +1,4 @@
-use image_dedup::storage::{StorageBackend, local::LocalStorageBackend};
+use image_dedup::storage::{local::LocalStorageBackend, StorageBackend};
 use std::sync::Arc;
 
 // Send + Syncを実装する型の例
@@ -102,7 +102,11 @@ async fn demonstrate_storage_usage() {
     let task2 = tokio::spawn(async move {
         // 同時に別のタスクでも使用（Sync）
         let exists = storage2.exists("Cargo.toml").await.unwrap();
-        if exists { 1 } else { 0 }
+        if exists {
+            1
+        } else {
+            0
+        }
     });
 
     let (count, exists_flag) = tokio::join!(task1, task2);

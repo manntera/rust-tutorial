@@ -3,7 +3,7 @@
 
 use crate::core::{HashPersistence, ProcessingConfig, ProgressReporter};
 use crate::engine::{
-    ProcessingEngine, create_default_processing_engine, create_quiet_processing_engine,
+    create_default_processing_engine, create_quiet_processing_engine, ProcessingEngine,
 };
 use crate::services::{
     ConsoleProgressReporter, DefaultProcessingConfig, MemoryHashPersistence, NoOpProgressReporter,
@@ -287,12 +287,16 @@ mod tests {
             crate::storage::local::LocalStorageBackend::new(),
         );
 
-        let temp_dir = tempfile::TempDir::new()
-            .expect("Failed to create temporary directory for test");
-        let temp_path = temp_dir.path().to_str()
+        let temp_dir =
+            tempfile::TempDir::new().expect("Failed to create temporary directory for test");
+        let temp_path = temp_dir
+            .path()
+            .to_str()
             .expect("Temporary directory path contains invalid UTF-8");
 
-        let result = app.run_parallel_quiet(temp_path).await
+        let result = app
+            .run_parallel_quiet(temp_path)
+            .await
             .expect("run_parallel_quiet should succeed on empty directory");
 
         assert_eq!(result.total_files, 0);

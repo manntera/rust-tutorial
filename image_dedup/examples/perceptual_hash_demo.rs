@@ -1,9 +1,9 @@
 use anyhow::Result;
 use image::{ImageBuffer, RgbImage};
 use image_dedup::perceptual_hash::{
-    PerceptualHashBackend,
     average_hash::{AverageHasher, DifferenceHasher},
     dct_hash::DctHasher,
+    PerceptualHashBackend,
 };
 
 #[tokio::main]

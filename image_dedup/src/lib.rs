@@ -16,21 +16,38 @@ pub mod storage;
 pub use app::App;
 // core モジュールから明示的にエクスポート
 pub use core::{
-    ProcessingError, ProcessingResult,
-    HashPersistence, ParallelProcessor, ProcessingConfig, ProgressReporter,
-    ProcessingOutcome, ProcessingMetadata, ProcessingSummary,
+    BoxedProcessingEngine,
+    DIMode,
+    DefaultConfig,
+    DependencyBundle,
+    DependencyContainer,
+    HashPersistence,
+    HighPerformanceConfig,
+    ParallelProcessor,
+    PerformanceCharacteristics,
+    ProcessingConfig,
+    ProcessingEngineFactory,
+    ProcessingEngineVariant,
+    ProcessingError,
+    ProcessingMetadata,
+    ProcessingOutcome,
+    ProcessingResult,
+    ProcessingSummary,
+    ProgressReporter,
+    StaticDIContainer,
+    StaticDependencyProvider,
+    StaticProcessingEngine,
+    TestingConfig,
+    // 統一DI API
+    UnifiedDI,
 };
-// engine モジュールから明示的にエクスポート  
+// engine モジュールから明示的にエクスポート
 pub use engine::{
-    ProcessingEngine,
-    process_directory_with_engine, process_files_with_engine,
     create_default_processing_engine, create_quiet_processing_engine,
+    process_directory_with_engine, process_files_with_engine, ProcessingEngine,
 };
 // services モジュールから明示的にエクスポート
 pub use services::{
-    DefaultProcessingConfig,
-    ConsoleProgressReporter, NoOpProgressReporter,
-    JsonHashPersistence, MemoryHashPersistence, StreamingJsonHashPersistence,
-    spawn_result_collector,
-    process_single_file,
+    process_single_file, spawn_result_collector, ConsoleProgressReporter, DefaultProcessingConfig,
+    JsonHashPersistence, MemoryHashPersistence, NoOpProgressReporter, StreamingJsonHashPersistence,
 };

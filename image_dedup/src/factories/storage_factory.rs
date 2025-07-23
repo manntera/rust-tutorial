@@ -1,7 +1,7 @@
 //! StorageFactory - ストレージバックエンドの Factory Pattern 実装
 
-use super::{ComponentFactory, ComponentConfig};
-use crate::storage::{StorageBackend, local::LocalStorageBackend};
+use super::{ComponentConfig, ComponentFactory};
+use crate::storage::{local::LocalStorageBackend, StorageBackend};
 use anyhow::Result;
 
 pub struct StorageFactory;
@@ -21,9 +21,7 @@ impl Default for StorageFactory {
 impl ComponentFactory<Box<dyn StorageBackend>> for StorageFactory {
     fn create(&self, config: &ComponentConfig) -> Result<Box<dyn StorageBackend>> {
         match config.implementation.as_str() {
-            "local" => {
-                Ok(Box::new(LocalStorageBackend::new()))
-            }
+            "local" => Ok(Box::new(LocalStorageBackend::new())),
             _ => anyhow::bail!(
                 "未サポートのStorage実装: {}. 利用可能: local",
                 config.implementation
@@ -73,14 +71,14 @@ mod tests {
     fn test_available_implementations() {
         let factory = StorageFactory::new();
         let implementations = factory.available_implementations();
-        
+
         assert_eq!(implementations, vec!["local"]);
     }
 
     #[test]
     fn test_get_description() {
         let factory = StorageFactory::new();
-        
+
         assert!(factory.get_description("local").is_some());
         assert!(factory.get_description("unknown").is_none());
     }

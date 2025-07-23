@@ -4,8 +4,8 @@
 use super::pipeline::ProcessingPipeline;
 use crate::{
     core::{
-        HashPersistence, ProcessingConfig, ProcessingError, ProcessingSummary, ProgressReporter,
-        ProcessingResult,
+        HashPersistence, ProcessingConfig, ProcessingError, ProcessingResult, ProcessingSummary,
+        ProgressReporter,
     },
     image_loader::ImageLoaderBackend,
     perceptual_hash::PerceptualHashBackend,
@@ -79,23 +79,25 @@ where
                 "buffer_size": self.config.channel_buffer_size()
             }
         });
-        
+
         // scan_infoをpersistenceに設定
-        self.persistence.as_ref().set_scan_info("scan".to_string(), scan_info).await
-            .map_err(|e| ProcessingError::parallel_execution(format!("scan_info設定エラー: {e}")))?;
+        self.persistence
+            .as_ref()
+            .set_scan_info("scan".to_string(), scan_info)
+            .await
+            .map_err(|e| {
+                ProcessingError::parallel_execution(format!("scan_info設定エラー: {e}"))
+            })?;
 
         // 既にArcで管理されている依存関係を効率的に共有
-        let pipeline = ProcessingPipeline::new(
-            Arc::clone(&self.loader),
-            Arc::clone(&self.hasher)
-        );
+        let pipeline = ProcessingPipeline::new(Arc::clone(&self.loader), Arc::clone(&self.hasher));
 
         pipeline
             .execute(
-                files, 
-                self.config.as_ref(), 
-                Arc::clone(&self.reporter), 
-                Arc::clone(&self.persistence)
+                files,
+                self.config.as_ref(),
+                Arc::clone(&self.reporter),
+                Arc::clone(&self.persistence),
             )
             .await
             .map_err(|e| {
@@ -220,17 +222,14 @@ where
         }
 
         // パイプライン実行
-        let pipeline = ProcessingPipeline::new(
-            Arc::clone(&self.loader),
-            Arc::clone(&self.hasher)
-        );
+        let pipeline = ProcessingPipeline::new(Arc::clone(&self.loader), Arc::clone(&self.hasher));
 
         let mut summary = pipeline
             .execute(
-                files, 
-                config, 
-                Arc::clone(&self.reporter), 
-                Arc::clone(&self.persistence)
+                files,
+                config,
+                Arc::clone(&self.reporter),
+                Arc::clone(&self.persistence),
             )
             .await
             .map_err(|e| {
@@ -392,12 +391,10 @@ mod tests {
             result,
             Err(ProcessingError::ConfigurationError { .. })
         ));
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("並列タスク数は1以上である必要があります")
-        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("並列タスク数は1以上である必要があります"));
 
         // 無効なバッチサイズの設定
         let invalid_config = DefaultProcessingConfig::default().with_batch_size(0);
@@ -415,12 +412,10 @@ mod tests {
             result,
             Err(ProcessingError::ConfigurationError { .. })
         ));
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("バッチサイズは1以上である必要があります")
-        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("バッチサイズは1以上である必要があります"));
     }
 
     #[tokio::test]
