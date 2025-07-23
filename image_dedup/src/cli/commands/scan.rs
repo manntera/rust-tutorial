@@ -142,6 +142,11 @@ pub async fn execute_scan(
         force,
     };
 
+    // 設定ファイルが指定されている場合は設定ファイルから読み込み
+    if let Some(config_path) = config_file {
+        return execute_scan_from_config_file(scan_config, config_path).await;
+    }
+
     // ハッシャーを作成（具体的な型で分岐）
     match algorithm.as_str() {
         "dct" => {
@@ -183,6 +188,15 @@ async fn execute_scan_with_dct_hasher(
     let thread_count = config.threads.unwrap_or_else(num_cpus::get);
     let output = &config.output;
     
+    let persistence = StreamingJsonHashPersistence::new(output);
+    
+    // DCT設定情報を設定
+    let dct_params = serde_json::json!({
+        "size": hasher.get_size(),
+        "quality_factor": hasher.get_quality_factor()
+    });
+    persistence.set_scan_info("dct".to_string(), dct_params).await?;
+    
     let scan_deps = ScanDependencies {
         loader: StandardImageLoader::with_max_dimension(512),
         hasher,
@@ -192,7 +206,7 @@ async fn execute_scan_with_dct_hasher(
             .with_batch_size(50)
             .with_progress_reporting(true),
         reporter: ConsoleProgressReporter::new(),
-        persistence: StreamingJsonHashPersistence::new(output),
+        persistence,
     };
 
     execute_scan_generic(config, scan_deps).await
@@ -206,6 +220,14 @@ async fn execute_scan_with_average_hasher(
     let thread_count = config.threads.unwrap_or_else(num_cpus::get);
     let output = &config.output;
     
+    let persistence = StreamingJsonHashPersistence::new(output);
+    
+    // Average設定情報を設定
+    let avg_params = serde_json::json!({
+        "size": hasher.get_size()
+    });
+    persistence.set_scan_info("average".to_string(), avg_params).await?;
+    
     let scan_deps = ScanDependencies {
         loader: StandardImageLoader::with_max_dimension(512),
         hasher,
@@ -215,7 +237,7 @@ async fn execute_scan_with_average_hasher(
             .with_batch_size(50)
             .with_progress_reporting(true),
         reporter: ConsoleProgressReporter::new(),
-        persistence: StreamingJsonHashPersistence::new(output),
+        persistence,
     };
 
     execute_scan_generic(config, scan_deps).await
@@ -229,6 +251,14 @@ async fn execute_scan_with_difference_hasher(
     let thread_count = config.threads.unwrap_or_else(num_cpus::get);
     let output = &config.output;
     
+    let persistence = StreamingJsonHashPersistence::new(output);
+    
+    // Difference設定情報を設定
+    let diff_params = serde_json::json!({
+        "size": hasher.get_size()
+    });
+    persistence.set_scan_info("difference".to_string(), diff_params).await?;
+    
     let scan_deps = ScanDependencies {
         loader: StandardImageLoader::with_max_dimension(512),
         hasher,
@@ -238,10 +268,59 @@ async fn execute_scan_with_difference_hasher(
             .with_batch_size(50)
             .with_progress_reporting(true),
         reporter: ConsoleProgressReporter::new(),
-        persistence: StreamingJsonHashPersistence::new(output),
+        persistence,
     };
 
     execute_scan_generic(config, scan_deps).await
+}
+
+/// 設定ファイルから読み込んでスキャンを実行
+async fn execute_scan_from_config_file(
+    config: ScanConfig,
+    config_path: PathBuf,
+) -> Result<()> {
+    // 設定ファイルを読み込み
+    let config_json = std::fs::read_to_string(&config_path)
+        .map_err(|e| anyhow::anyhow!("設定ファイルの読み込みエラー: {}", e))?;
+    
+    // JSONを解析
+    let dynamic_config: DynamicAlgorithmConfig = serde_json::from_str(&config_json)
+        .map_err(|e| anyhow::anyhow!("設定ファイルの解析エラー: {}", e))?;
+    
+    println!("📄 設定ファイル: {}", config_path.display());
+    println!("🔧 アルゴリズム: {}", dynamic_config.algorithm);
+    println!("⚙️  パラメータ: {}", serde_json::to_string_pretty(&dynamic_config.parameters)?);
+    
+    // アルゴリズムに応じて適切な関数を呼び出し
+    match dynamic_config.algorithm.as_str() {
+        "dct" => {
+            let dct_config: crate::perceptual_hash::dct_config::DctConfig = 
+                serde_json::from_value(dynamic_config.parameters)
+                    .map_err(|e| anyhow::anyhow!("DCT設定の解析エラー: {}", e))?;
+            dct_config.validate()?;
+            let hasher = dct_config.create_hasher()?;
+            execute_scan_with_dct_hasher(config, hasher).await
+        }
+        "average" => {
+            let avg_config: crate::perceptual_hash::average_config::AverageConfig = 
+                serde_json::from_value(dynamic_config.parameters)
+                    .map_err(|e| anyhow::anyhow!("Average設定の解析エラー: {}", e))?;
+            avg_config.validate()?;
+            let hasher = avg_config.create_hasher()?;
+            execute_scan_with_average_hasher(config, hasher).await
+        }
+        "difference" => {
+            let diff_config: crate::perceptual_hash::difference_config::DifferenceConfig = 
+                serde_json::from_value(dynamic_config.parameters)
+                    .map_err(|e| anyhow::anyhow!("Difference設定の解析エラー: {}", e))?;
+            diff_config.validate()?;
+            let hasher = diff_config.create_hasher()?;
+            execute_scan_with_difference_hasher(config, hasher).await
+        }
+        _ => {
+            anyhow::bail!("サポートされていないアルゴリズム: {}. 利用可能: dct, average, difference", dynamic_config.algorithm);
+        }
+    }
 }
 
 #[cfg(test)]

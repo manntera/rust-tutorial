@@ -95,15 +95,29 @@ impl HashPersistence for MemoryHashPersistence {
     }
 }
 
-/// JSON形式で保存するハッシュデータ
+/// JSON形式で保存するハッシュデータ（画像単位）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HashEntry {
     pub file_path: String,
     pub hash: String,
-    pub algorithm: String,
     pub hash_bits: u64,
-    pub timestamp: String,
     pub metadata: ProcessingMetadata,
+}
+
+/// スキャン情報（アルゴリズムとパラメーター）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanInfo {
+    pub algorithm: String,
+    pub parameters: serde_json::Value,
+    pub timestamp: String,
+    pub total_files: usize,
+}
+
+/// 新しいJSON出力フォーマット
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanResult {
+    pub scan_info: ScanInfo,
+    pub images: Vec<HashEntry>,
 }
 
 /// JSON形式での永続化実装
@@ -180,9 +194,7 @@ impl HashPersistence for JsonHashPersistence {
             let entry = HashEntry {
                 file_path: file_path.clone(),
                 hash: hash.clone(),
-                algorithm: algorithm.clone(),
                 hash_bits: *hash_bits,
-                timestamp: chrono::Utc::now().to_rfc3339(),
                 metadata: metadata.clone(),
             };
             
@@ -495,7 +507,7 @@ mod tests {
     }
 }
 
-/// ストリーミングJSON書き込み対応版
+/// ストリーミングJSON書き込み対応版（新フォーマット）
 /// より効率的なメモリ使用量と高速書き込みを実現
 #[derive(Debug, Clone)]
 pub struct StreamingJsonHashPersistence {
@@ -504,6 +516,7 @@ pub struct StreamingJsonHashPersistence {
     entries_written: Arc<AsyncMutex<usize>>,
     buffer: Arc<AsyncMutex<Vec<(String, String, String, u64, ProcessingMetadata)>>>,
     buffer_size: usize,
+    scan_info: Arc<AsyncMutex<Option<ScanInfo>>>,
 }
 
 impl StreamingJsonHashPersistence {
@@ -515,6 +528,7 @@ impl StreamingJsonHashPersistence {
             entries_written: Arc::new(AsyncMutex::new(0)),
             buffer: Arc::new(AsyncMutex::new(Vec::new())),
             buffer_size: 100, // デフォルトバッファサイズ
+            scan_info: Arc::new(AsyncMutex::new(None)),
         }
     }
     
@@ -526,10 +540,51 @@ impl StreamingJsonHashPersistence {
             entries_written: Arc::new(AsyncMutex::new(0)),
             buffer: Arc::new(AsyncMutex::new(Vec::with_capacity(buffer_size))),
             buffer_size,
+            scan_info: Arc::new(AsyncMutex::new(None)),
         }
     }
     
-    /// ファイルを初期化（JSON配列開始）
+    /// スキャン情報を設定
+    pub async fn set_scan_info(&self, algorithm: String, parameters: serde_json::Value) -> Result<()> {
+        let scan_info = ScanInfo {
+            algorithm,
+            parameters,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            total_files: 0, // 後で更新
+        };
+        
+        *self.scan_info.lock().await = Some(scan_info);
+        Ok(())
+    }
+    
+    /// JSONファイルのtotal_filesを更新
+    async fn update_json_total_files(&self, total: usize) -> Result<()> {
+        // JSONファイルを読み込み
+        let content = tokio::fs::read_to_string(&self.file_path).await
+            .map_err(|e| anyhow::anyhow!("ファイル読み込みエラー: {e}"))?;
+            
+        // JSONをパース
+        let mut json_value: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|e| anyhow::anyhow!("JSON解析エラー: {e}"))?;
+            
+        // total_filesを更新
+        if let Some(scan_info) = json_value.get_mut("scan_info") {
+            if let Some(scan_info_obj) = scan_info.as_object_mut() {
+                scan_info_obj.insert("total_files".to_string(), serde_json::Value::Number(serde_json::Number::from(total)));
+            }
+        }
+        
+        // 更新されたJSONをファイルに書き戻し
+        let updated_content = serde_json::to_string_pretty(&json_value)
+            .map_err(|e| anyhow::anyhow!("JSON変換エラー: {e}"))?;
+            
+        tokio::fs::write(&self.file_path, updated_content).await
+            .map_err(|e| anyhow::anyhow!("ファイル書き込みエラー: {e}"))?;
+            
+        Ok(())
+    }
+    
+    /// ファイルを初期化（新しいJSONフォーマット）
     async fn initialize_file(&self) -> Result<()> {
         let mut writer_guard = self.writer.lock().await;
         if writer_guard.is_some() {
@@ -551,14 +606,16 @@ impl StreamingJsonHashPersistence {
             .map_err(|e| anyhow::anyhow!("ファイル作成エラー: {e}"))?;
             
         let mut writer = BufWriter::new(file);
-        writer.write_all(b"[\n").await
+        
+        // 新しいJSONオブジェクト形式で開始
+        writer.write_all(b"{\n").await
             .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
             
         *writer_guard = Some(writer);
-        Ok(())
+        Ok(())  
     }
     
-    /// バッファをフラッシュ
+    /// バッファをフラッシュ（images配列への書き込み）
     async fn flush_buffer(&self) -> Result<()> {
         let mut buffer_guard = self.buffer.lock().await;
         if buffer_guard.is_empty() {
@@ -573,13 +630,43 @@ impl StreamingJsonHashPersistence {
         
         let mut entries_written = self.entries_written.lock().await;
         
-        for (file_path, hash, algorithm, hash_bits, metadata) in buffer_guard.drain(..) {
+        // scan_infoセクションをまだ書いていない場合
+        if *entries_written == 0 {
+            let scan_info_guard = self.scan_info.lock().await;
+            if let Some(scan_info) = scan_info_guard.as_ref() {
+                // scan_infoセクションを書き込み
+                let scan_info_json = serde_json::to_string_pretty(scan_info)
+                    .map_err(|e| anyhow::anyhow!("scan_info JSON変換エラー: {e}"))?;
+                    
+                // scan_infoを2スペースでインデント
+                let indented_scan_info = scan_info_json.lines()
+                    .enumerate()  
+                    .map(|(i, line)| {
+                        if i == 0 {
+                            line.to_string() // 最初の行はインデントしない
+                        } else {
+                            format!("  {line}") // 後続行は2スペースでインデント
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                    
+                writer.write_all(b"  \"scan_info\": ").await
+                    .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+                writer.write_all(indented_scan_info.as_bytes()).await
+                    .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+                writer.write_all(b",\n  \"images\": [\n").await
+                    .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+            } else {
+                return Err(anyhow::anyhow!("scan_infoが設定されていません"));
+            }
+        }
+        
+        for (file_path, hash, _algorithm, hash_bits, metadata) in buffer_guard.drain(..) {
             let entry = HashEntry {
                 file_path,
                 hash,
-                algorithm,
                 hash_bits,
-                timestamp: chrono::Utc::now().to_rfc3339(),
                 metadata,
             };
             
@@ -589,12 +676,12 @@ impl StreamingJsonHashPersistence {
                     .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
             }
             
-            // JSON エントリを書き込み
+            // JSON エントリを書き込み（4スペースでインデント）
             let json_str = serde_json::to_string_pretty(&entry)
                 .map_err(|e| anyhow::anyhow!("JSON変換エラー: {e}"))?;
                 
             let indented = json_str.lines()
-                .map(|line| format!("  {line}"))
+                .map(|line| format!("    {line}"))
                 .collect::<Vec<_>>()
                 .join("\n");
                 
@@ -649,31 +736,65 @@ impl HashPersistence for StreamingJsonHashPersistence {
         // 残りのバッファをフラッシュ
         self.flush_buffer().await?;
         
+        let entries_written = *self.entries_written.lock().await;
+        
         let mut writer_guard = self.writer.lock().await;
         if let Some(mut writer) = writer_guard.take() {
-            // JSON配列終了
-            writer.write_all(b"\n]").await
+            // images配列を閉じる
+            writer.write_all(b"\n  ]").await
+                .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+                
+            // JSONオブジェクト終了
+            writer.write_all(b"\n}").await
                 .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
                 
             writer.flush().await
                 .map_err(|e| anyhow::anyhow!("フラッシュエラー: {e}"))?;
+                
+            // ファイルを閉じた後、JSONを読み込んでtotal_filesを更新
+            drop(writer_guard);
+            self.update_json_total_files(entries_written).await?;
         } else {
-            // ファイルが既に存在する場合（以前にfinalize済み）は何もしない
-            // ファイルが存在しない場合のみ空のJSONファイルを作成
+            // ファイルが存在しない場合（何も保存されていない）
             if !tokio::fs::try_exists(&self.file_path).await.unwrap_or(false) {
-                // ロックを解放してから初期化処理を行う
                 drop(writer_guard);
                 
                 self.initialize_file().await?;
                 let mut writer_guard = self.writer.lock().await;
                 if let Some(mut writer) = writer_guard.take() {
-                    writer.write_all(b"\n]").await
-                        .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+                    // 空のファイルの場合、scan_infoだけ書いて空のimages配列を作成
+                    let scan_info_guard = self.scan_info.lock().await;
+                    if let Some(scan_info) = scan_info_guard.as_ref() {
+                        let scan_info_json = serde_json::to_string_pretty(scan_info)
+                            .map_err(|e| anyhow::anyhow!("scan_info JSON変換エラー: {e}"))?;
+                            
+                        let indented_scan_info = scan_info_json.lines()
+                            .enumerate()
+                            .map(|(i, line)| {
+                                if i == 0 {
+                                    line.to_string()
+                                } else {
+                                    format!("  {line}")
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                            
+                        writer.write_all(b"  \"scan_info\": ").await
+                            .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+                        writer.write_all(indented_scan_info.as_bytes()).await
+                            .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+                        writer.write_all(b",\n  \"images\": []\n}").await
+                            .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+                    } else {
+                        writer.write_all(b"  \"scan_info\": null,\n  \"images\": []\n}").await
+                            .map_err(|e| anyhow::anyhow!("書き込みエラー: {e}"))?;
+                    }
+                    
                     writer.flush().await
                         .map_err(|e| anyhow::anyhow!("フラッシュエラー: {e}"))?;
                 }
             }
-            // ファイルが既に存在する場合は何もしない（idempotent）
         }
         
         Ok(())

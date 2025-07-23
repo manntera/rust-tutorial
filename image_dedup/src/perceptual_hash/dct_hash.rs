@@ -10,6 +10,7 @@ use std::time::Instant;
 pub struct DctHasher {
     algorithm: HashAlgorithm,
     hash_size: u32,
+    quality_factor: f32,
 }
 
 impl DctHasher {
@@ -17,7 +18,24 @@ impl DctHasher {
         Ok(Self {
             algorithm: HashAlgorithm::DCT { size },
             hash_size: size,
+            quality_factor: 1.0,
         })
+    }
+    
+    pub fn with_quality_factor(size: u32, quality_factor: f32) -> Result<Self> {
+        Ok(Self {
+            algorithm: HashAlgorithm::DCT { size },
+            hash_size: size,
+            quality_factor,
+        })
+    }
+    
+    pub fn get_size(&self) -> u32 {
+        self.hash_size
+    }
+    
+    pub fn get_quality_factor(&self) -> f32 {
+        self.quality_factor
     }
 }
 

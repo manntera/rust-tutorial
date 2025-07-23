@@ -5,6 +5,7 @@ use image::DynamicImage;
 use std::time::Instant;
 
 /// 平均値ベースの知覚ハッシュ実装
+#[derive(Clone)]
 pub struct AverageHasher {
     algorithm: HashAlgorithm,
     hash_size: u32,
@@ -16,6 +17,10 @@ impl AverageHasher {
             algorithm: HashAlgorithm::Average { size },
             hash_size: size,
         }
+    }
+    
+    pub fn get_size(&self) -> u32 {
+        self.hash_size
     }
 
     fn compute_average_hash(&self, image: &DynamicImage) -> Vec<u8> {
@@ -108,16 +113,9 @@ impl PerceptualHashBackend for AverageHasher {
     }
 }
 
-impl Clone for AverageHasher {
-    fn clone(&self) -> Self {
-        Self {
-            algorithm: self.algorithm.clone(),
-            hash_size: self.hash_size,
-        }
-    }
-}
 
 /// 差分ベースの知覚ハッシュ実装
+#[derive(Clone)]
 pub struct DifferenceHasher {
     algorithm: HashAlgorithm,
     hash_size: u32,
@@ -129,6 +127,10 @@ impl DifferenceHasher {
             algorithm: HashAlgorithm::Difference { size },
             hash_size: size,
         }
+    }
+    
+    pub fn get_size(&self) -> u32 {
+        self.hash_size
     }
 
     fn compute_difference_hash(&self, image: &DynamicImage) -> Vec<u8> {
@@ -222,14 +224,6 @@ impl PerceptualHashBackend for DifferenceHasher {
     }
 }
 
-impl Clone for DifferenceHasher {
-    fn clone(&self) -> Self {
-        Self {
-            algorithm: self.algorithm.clone(),
-            hash_size: self.hash_size,
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
