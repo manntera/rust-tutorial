@@ -1,7 +1,7 @@
 {
   "algorithm": "dct",
   "parameters": {
-    "size": 16,
+    "size": 32,
     "quality_factor": 0.95
   }
 }
