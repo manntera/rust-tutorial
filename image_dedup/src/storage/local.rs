@@ -224,11 +224,11 @@ mod tests {
         std::fs::write(&file_path, b"content").unwrap();
 
         let backend = LocalStorageBackend::new();
-        
+
         // 存在するファイルのテスト
         let exists = backend.exists(file_path.to_str().unwrap()).await.unwrap();
         assert!(exists);
-        
+
         // 存在しないファイルのテスト
         let not_exists = backend.exists("/nonexistent/file.txt").await.unwrap();
         assert!(!not_exists);
@@ -241,13 +241,16 @@ mod tests {
         std::fs::write(&file_path, b"content").unwrap();
 
         let backend = LocalStorageBackend::new();
-        
+
         // ファイルが存在することを確認
         assert!(file_path.exists());
-        
+
         // ファイルを削除
-        backend.delete_item(file_path.to_str().unwrap()).await.unwrap();
-        
+        backend
+            .delete_item(file_path.to_str().unwrap())
+            .await
+            .unwrap();
+
         // ファイルが削除されたことを確認
         assert!(!file_path.exists());
     }
@@ -263,10 +266,15 @@ mod tests {
     async fn test_delete_directory_fails() {
         let temp_dir = tempdir().unwrap();
         let backend = LocalStorageBackend::new();
-        
+
         let result = backend.delete_item(temp_dir.path().to_str().unwrap()).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Cannot delete directory"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Cannot delete directory")
+        );
     }
 
     #[tokio::test]

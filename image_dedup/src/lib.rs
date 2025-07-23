@@ -1,9 +1,9 @@
 // 新しい機能別フォルダ構成
-pub mod core;
-pub mod services; 
-pub mod engine;
-pub mod cli;
 pub mod app;
+pub mod cli;
+pub mod core;
+pub mod engine;
+pub mod services;
 
 // 従来のモジュール
 pub mod image_loader;
@@ -15,4 +15,3 @@ pub use app::App;
 pub use core::*;
 pub use engine::*;
 pub use services::*;
-

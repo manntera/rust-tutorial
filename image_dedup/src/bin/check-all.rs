@@ -1,5 +1,5 @@
-use std::process::Command;
 use std::env;
+use std::process::Command;
 
 fn main() {
     let commands = [
@@ -26,7 +26,10 @@ fn main() {
         match output {
             Ok(output) => {
                 if !output.status.success() {
-                    eprintln!("Error executing {cmd}: {}", String::from_utf8_lossy(&output.stderr));
+                    eprintln!(
+                        "Error executing {cmd}: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
                     std::process::exit(1);
                 }
                 println!("{}", String::from_utf8_lossy(&output.stdout));
@@ -37,6 +40,6 @@ fn main() {
             }
         }
     }
-    
+
     println!("すべてのチェックが完了しました！");
 }

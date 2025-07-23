@@ -1,8 +1,8 @@
-use anyhow::Result;
-use std::path::{Path, PathBuf};
-use std::fs;
-use serde::{Deserialize, Serialize};
 use crate::cli::ProcessAction;
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize, Serialize)]
 struct DuplicatesReport {
@@ -31,18 +31,20 @@ struct DuplicateFile {
 /// Prompt user for confirmation
 fn confirm_action(action: &ProcessAction, total_files: usize) -> Result<bool> {
     use std::io::{self, Write};
-    
-    print!("⚠️  {} files will be {}. Continue? [y/N]: ", 
-           total_files, 
-           match action {
-               ProcessAction::Move => "moved",
-               ProcessAction::Delete => "PERMANENTLY DELETED"
-           });
+
+    print!(
+        "⚠️  {} files will be {}. Continue? [y/N]: ",
+        total_files,
+        match action {
+            ProcessAction::Move => "moved",
+            ProcessAction::Delete => "PERMANENTLY DELETED",
+        }
+    );
     io::stdout().flush()?;
-    
+
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
-    
+
     Ok(input.trim().to_lowercase() == "y")
 }
 
@@ -55,69 +57,84 @@ pub async fn execute_process(
 ) -> Result<()> {
     // Validate input file
     if !duplicate_list.exists() {
-        anyhow::bail!("Duplicate list file does not exist: {}", duplicate_list.display());
+        anyhow::bail!(
+            "Duplicate list file does not exist: {}",
+            duplicate_list.display()
+        );
     }
-    
+
     println!("🔧 画像重複検出ツール - processコマンド");
     println!("📄 重複リストファイル: {}", duplicate_list.display());
     println!("🎯 アクション: {action:?}");
     if matches!(action, ProcessAction::Move) {
         println!("📁 移動先ディレクトリ: {}", dest.display());
     }
-    
+
     // Read duplicates report
     let json_content = fs::read_to_string(&duplicate_list)?;
     let report: DuplicatesReport = serde_json::from_str(&json_content)?;
-    
+
     if report.total_groups == 0 {
         println!("✅ 処理する重複ファイルがありません。");
         return Ok(());
     }
-    
+
     println!("\n📊 重複情報:");
     println!("   - グループ数: {}", report.total_groups);
     println!("   - 重複ファイル総数: {}", report.total_duplicates);
-    
+
     // Count files to process (keep first file in each group)
-    let files_to_process: Vec<(usize, &DuplicateFile)> = report.groups.iter()
+    let files_to_process: Vec<(usize, &DuplicateFile)> = report
+        .groups
+        .iter()
         .flat_map(|group| {
-            group.files.iter()
+            group
+                .files
+                .iter()
                 .skip(1) // Keep the first file
                 .map(move |file| (group.group_id, file))
         })
         .collect();
-    
-    println!("   - 処理対象ファイル数: {} (各グループの最初のファイルは保持)", files_to_process.len());
-    
+
+    println!(
+        "   - 処理対象ファイル数: {} (各グループの最初のファイルは保持)",
+        files_to_process.len()
+    );
+
     // Confirm action
     if !no_confirm && !confirm_action(&action, files_to_process.len())? {
         println!("❌ 処理をキャンセルしました。");
         return Ok(());
     }
-    
+
     // Create destination directory if moving
     if matches!(action, ProcessAction::Move) {
         fs::create_dir_all(&dest)?;
     }
-    
+
     // Process files
     let mut success_count = 0;
     let mut error_count = 0;
-    
+
     for (group_id, file) in files_to_process {
         let source_path = Path::new(&file.path);
-        
+
         match &action {
             ProcessAction::Move => {
-                let filename = source_path.file_name()
+                let filename = source_path
+                    .file_name()
                     .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
                 let dest_subdir = dest.join(format!("group_{group_id}"));
                 fs::create_dir_all(&dest_subdir)?;
                 let dest_path = dest_subdir.join(filename);
-                
+
                 match fs::rename(source_path, &dest_path) {
                     Ok(_) => {
-                        println!("✓ 移動: {} → {}", source_path.display(), dest_path.display());
+                        println!(
+                            "✓ 移動: {} → {}",
+                            source_path.display(),
+                            dest_path.display()
+                        );
                         success_count += 1;
                     }
                     Err(e) => {
@@ -126,36 +143,34 @@ pub async fn execute_process(
                     }
                 }
             }
-            ProcessAction::Delete => {
-                match fs::remove_file(source_path) {
-                    Ok(_) => {
-                        println!("✓ 削除: {}", source_path.display());
-                        success_count += 1;
-                    }
-                    Err(e) => {
-                        eprintln!("✗ エラー: {} - {}", source_path.display(), e);
-                        error_count += 1;
-                    }
+            ProcessAction::Delete => match fs::remove_file(source_path) {
+                Ok(_) => {
+                    println!("✓ 削除: {}", source_path.display());
+                    success_count += 1;
                 }
-            }
+                Err(e) => {
+                    eprintln!("✗ エラー: {} - {}", source_path.display(), e);
+                    error_count += 1;
+                }
+            },
         }
     }
-    
+
     println!("\n✅ 処理完了!");
     println!("📊 結果:");
     println!("   - 成功: {success_count} ファイル");
     if error_count > 0 {
         println!("   - エラー: {error_count} ファイル");
     }
-    
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     fn create_test_duplicate_report(groups: Vec<DuplicateGroup>) -> String {
         let report = DuplicatesReport {
@@ -171,7 +186,7 @@ mod tests {
     async fn test_process_nonexistent_duplicate_list() {
         let nonexistent = PathBuf::from("nonexistent.json");
         let dest = PathBuf::from("./duplicates");
-        
+
         let result = execute_process(nonexistent, ProcessAction::Move, dest, true).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("does not exist"));
@@ -182,11 +197,11 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let dup_list = temp_dir.path().join("duplicates.json");
         let dest = temp_dir.path().join("moved");
-        
+
         // Create empty duplicates report
         let empty_report = create_test_duplicate_report(vec![]);
         fs::write(&dup_list, empty_report).unwrap();
-        
+
         let result = execute_process(dup_list, ProcessAction::Move, dest, true).await;
         assert!(result.is_ok());
     }
@@ -219,7 +234,7 @@ mod tests {
                 },
             ],
         };
-        
+
         let report_json = create_test_duplicate_report(vec![group]);
         fs::write(&dup_list, report_json).unwrap();
 
@@ -228,7 +243,7 @@ mod tests {
 
         // Check that first file still exists (kept)
         assert!(file1.exists());
-        
+
         // Check that second file was moved
         assert!(!file2.exists());
         assert!(dest.join("group_0").join("image2.jpg").exists());
@@ -261,7 +276,7 @@ mod tests {
                 },
             ],
         };
-        
+
         let report_json = create_test_duplicate_report(vec![group]);
         fs::write(&dup_list, report_json).unwrap();
 
@@ -270,7 +285,7 @@ mod tests {
 
         // Check that first file still exists (kept)
         assert!(file1.exists());
-        
+
         // Check that second file was deleted
         assert!(!file2.exists());
     }
@@ -328,7 +343,7 @@ mod tests {
                 ],
             },
         ];
-        
+
         let report_json = create_test_duplicate_report(groups);
         fs::write(&dup_list, report_json).unwrap();
 
@@ -338,12 +353,12 @@ mod tests {
         // Check that first files of each group still exist
         assert!(files[0].exists()); // group 0 first file
         assert!(files[3].exists()); // group 1 first file
-        
+
         // Check that other files were moved
         assert!(!files[1].exists());
         assert!(!files[2].exists());
         assert!(!files[4].exists());
-        
+
         // Check moved files exist in destination
         assert!(dest.join("group_0").join("image2.jpg").exists());
         assert!(dest.join("group_0").join("image3.jpg").exists());
@@ -377,7 +392,7 @@ mod tests {
                 },
             ],
         };
-        
+
         let report_json = create_test_duplicate_report(vec![group]);
         fs::write(&dup_list, report_json).unwrap();
 
@@ -404,7 +419,7 @@ mod tests {
         // Test that ProcessAction can be formatted
         let move_action = ProcessAction::Move;
         let delete_action = ProcessAction::Delete;
-        
+
         assert!(format!("{:?}", move_action).contains("Move"));
         assert!(format!("{:?}", delete_action).contains("Delete"));
     }

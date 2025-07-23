@@ -155,8 +155,8 @@ impl ImageLoaderBackend for StandardImageLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use image::ImageFormat;
+    use tempfile::tempdir;
 
     #[tokio::test]
     async fn test_load_from_path() {
@@ -217,7 +217,7 @@ mod tests {
     async fn test_load_from_invalid_bytes() {
         let loader = StandardImageLoader::new();
         let invalid_data = b"this is not an image";
-        
+
         let result = loader.load_from_bytes(invalid_data).await;
         assert!(result.is_err());
     }
@@ -226,7 +226,7 @@ mod tests {
     async fn test_load_from_nonexistent_path() {
         let loader = StandardImageLoader::new();
         let nonexistent_path = std::path::Path::new("/nonexistent/image.png");
-        
+
         let result = loader.load_from_path(nonexistent_path).await;
         assert!(result.is_err());
     }
@@ -235,8 +235,10 @@ mod tests {
     async fn test_load_with_invalid_format() {
         let loader = StandardImageLoader::new();
         let invalid_data = b"invalid image data";
-        
-        let result = loader.load_with_format(invalid_data, ImageFormat::Png).await;
+
+        let result = loader
+            .load_with_format(invalid_data, ImageFormat::Png)
+            .await;
         assert!(result.is_err());
     }
 
@@ -273,8 +275,11 @@ mod tests {
 
         let image_bytes = std::fs::read(&image_path).unwrap();
         let loader = StandardImageLoader::new();
-        
-        let result = loader.load_with_format(&image_bytes, ImageFormat::Png).await.unwrap();
+
+        let result = loader
+            .load_with_format(&image_bytes, ImageFormat::Png)
+            .await
+            .unwrap();
         assert_eq!(result.original_dimensions, (20, 20));
     }
 }

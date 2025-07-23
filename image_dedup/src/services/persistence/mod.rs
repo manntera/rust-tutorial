@@ -6,4 +6,6 @@ pub mod implementations;
 
 // 公開API
 pub use collector::spawn_result_collector;
-pub use implementations::{MemoryHashPersistence, JsonHashPersistence, StreamingJsonHashPersistence};
+pub use implementations::{
+    JsonHashPersistence, MemoryHashPersistence, StreamingJsonHashPersistence,
+};

@@ -47,7 +47,7 @@ mod tests {
             image_dimensions: (512, 512),
             was_resized: false,
         };
-        
+
         assert_eq!(metadata.file_size, 1024);
         assert_eq!(metadata.processing_time_ms, 150);
         assert_eq!(metadata.image_dimensions, (512, 512));
@@ -63,7 +63,7 @@ mod tests {
             total_processing_time_ms: 30000,
             average_time_per_file_ms: 315.79,
         };
-        
+
         assert_eq!(summary.total_files, 100);
         assert_eq!(summary.processed_files, 95);
         assert_eq!(summary.error_count, 5);
@@ -79,7 +79,7 @@ mod tests {
             image_dimensions: (1024, 1024),
             was_resized: true,
         };
-        
+
         let result = ProcessingResult::Success {
             file_path: "/test/image.jpg".to_string(),
             hash: "abcd1234".to_string(),
@@ -87,9 +87,15 @@ mod tests {
             hash_bits: 0x12345678,
             metadata,
         };
-        
+
         match result {
-            ProcessingResult::Success { file_path, hash, algorithm, hash_bits, metadata } => {
+            ProcessingResult::Success {
+                file_path,
+                hash,
+                algorithm,
+                hash_bits,
+                metadata,
+            } => {
                 assert_eq!(file_path, "/test/image.jpg");
                 assert_eq!(hash, "abcd1234");
                 assert_eq!(metadata.file_size, 2048);
@@ -105,7 +111,7 @@ mod tests {
             file_path: "/test/invalid.jpg".to_string(),
             error: "Failed to load image".to_string(),
         };
-        
+
         match result {
             ProcessingResult::Success { .. } => panic!("Expected Error variant"),
             ProcessingResult::Error { file_path, error } => {
@@ -123,7 +129,7 @@ mod tests {
             image_dimensions: (512, 512),
             was_resized: false,
         };
-        
+
         let debug_str = format!("{metadata:?}");
         assert!(debug_str.contains("file_size: 1024"));
         assert!(debug_str.contains("processing_time_ms: 150"));

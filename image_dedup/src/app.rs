@@ -1,9 +1,13 @@
 // アプリケーション層 - DIコンテナとアプリケーションロジック
 // 依存関係の注入と高レベルなアプリケーション制御を担当
 
-use crate::core::{ProcessingConfig, ProgressReporter, HashPersistence};
-use crate::engine::{ProcessingEngine, create_default_processing_engine, create_quiet_processing_engine};
-use crate::services::{DefaultProcessingConfig, ConsoleProgressReporter, NoOpProgressReporter, MemoryHashPersistence};
+use crate::core::{HashPersistence, ProcessingConfig, ProgressReporter};
+use crate::engine::{
+    ProcessingEngine, create_default_processing_engine, create_quiet_processing_engine,
+};
+use crate::services::{
+    ConsoleProgressReporter, DefaultProcessingConfig, MemoryHashPersistence, NoOpProgressReporter,
+};
 
 // DIコンテナの役割を果たすジェネリックなApp構造体
 // 依存関係を直接所有し、必要に応じてArc<App>で共有する設計
@@ -58,12 +62,19 @@ where
     // ========================================
 
     /// デフォルト設定の並列処理エンジンを作成
-    /// 
+    ///
     /// 依存関係をクローンして新しいエンジンを作成
     /// Cloneが重い場合は、Arc<App>を使用して共有することを推奨
     pub fn create_processing_engine(
         &self,
-    ) -> ProcessingEngine<L, H, S, DefaultProcessingConfig, ConsoleProgressReporter, MemoryHashPersistence>
+    ) -> ProcessingEngine<
+        L,
+        H,
+        S,
+        DefaultProcessingConfig,
+        ConsoleProgressReporter,
+        MemoryHashPersistence,
+    >
     where
         L: Clone + 'static,
         H: Clone + 'static,
@@ -80,7 +91,14 @@ where
     /// 静音版の並列処理エンジンを作成（バックグラウンド処理用）
     pub fn create_quiet_processing_engine(
         &self,
-    ) -> ProcessingEngine<L, H, S, DefaultProcessingConfig, NoOpProgressReporter, MemoryHashPersistence>
+    ) -> ProcessingEngine<
+        L,
+        H,
+        S,
+        DefaultProcessingConfig,
+        NoOpProgressReporter,
+        MemoryHashPersistence,
+    >
     where
         L: Clone + 'static,
         H: Clone + 'static,
@@ -127,19 +145,26 @@ where
         S: Clone + 'static,
     {
         let engine = self.create_processing_engine();
-        engine.process_directory(path).await
+        engine
+            .process_directory(path)
+            .await
             .map_err(|e| anyhow::anyhow!("並列処理エラー: {e}"))
     }
 
     /// 静音並列処理でディレクトリを処理（バックグラウンド用）
-    pub async fn run_parallel_quiet(&self, path: &str) -> anyhow::Result<crate::core::ProcessingSummary>
+    pub async fn run_parallel_quiet(
+        &self,
+        path: &str,
+    ) -> anyhow::Result<crate::core::ProcessingSummary>
     where
         L: Clone + 'static,
         H: Clone + 'static,
         S: Clone + 'static,
     {
         let engine = self.create_quiet_processing_engine();
-        engine.process_directory(path).await
+        engine
+            .process_directory(path)
+            .await
             .map_err(|e| anyhow::anyhow!("静音並列処理エラー: {e}"))
     }
 }
@@ -204,9 +229,12 @@ mod tests {
         );
 
         let engine = app.create_processing_engine();
-        
+
         // エンジンが正常に作成されることを確認
-        assert_eq!(engine.config().max_concurrent_tasks(), num_cpus::get().max(1) * 2);
+        assert_eq!(
+            engine.config().max_concurrent_tasks(),
+            num_cpus::get().max(1) * 2
+        );
         assert!(engine.config().enable_progress_reporting());
     }
 
@@ -219,9 +247,12 @@ mod tests {
         );
 
         let engine = app.create_quiet_processing_engine();
-        
+
         // 静音エンジンが正常に作成されることを確認
-        assert_eq!(engine.config().max_concurrent_tasks(), num_cpus::get().max(1) * 2);
+        assert_eq!(
+            engine.config().max_concurrent_tasks(),
+            num_cpus::get().max(1) * 2
+        );
         assert!(engine.config().enable_progress_reporting()); // 設定は有効だがNoOpReporterが静音
     }
 
@@ -236,7 +267,7 @@ mod tests {
         let custom_config = DefaultProcessingConfig::new(4)
             .with_max_concurrent(4)
             .with_batch_size(10);
-        
+
         let engine = app.create_custom_processing_engine(
             custom_config,
             ConsoleProgressReporter::quiet(),

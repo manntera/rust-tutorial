@@ -18,7 +18,7 @@ impl AverageHasher {
             hash_size: size,
         }
     }
-    
+
     pub fn get_size(&self) -> u32 {
         self.hash_size
     }
@@ -113,7 +113,6 @@ impl PerceptualHashBackend for AverageHasher {
     }
 }
 
-
 /// 差分ベースの知覚ハッシュ実装
 #[derive(Clone)]
 pub struct DifferenceHasher {
@@ -128,7 +127,7 @@ impl DifferenceHasher {
             hash_size: size,
         }
     }
-    
+
     pub fn get_size(&self) -> u32 {
         self.hash_size
     }
@@ -223,7 +222,6 @@ impl PerceptualHashBackend for DifferenceHasher {
         "Difference Hash"
     }
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -1,23 +1,23 @@
 // 並列処理システムのトレイト定義
 // 全ての抽象化インターフェースを定義
 
-use async_trait::async_trait;
-use anyhow::Result;
-use mockall::automock;
 use super::types::{ProcessingMetadata, ProcessingSummary};
+use anyhow::Result;
+use async_trait::async_trait;
+use mockall::automock;
 
 /// 並列処理の設定を抽象化するトレイト
 #[automock]
 pub trait ProcessingConfig: Send + Sync {
     /// 最大同時実行タスク数を取得
     fn max_concurrent_tasks(&self) -> usize;
-    
+
     /// チャンネルバッファサイズを取得
     fn channel_buffer_size(&self) -> usize;
-    
+
     /// バッチ処理のサイズを取得
     fn batch_size(&self) -> usize;
-    
+
     /// 進捗報告を有効にするかどうか
     fn enable_progress_reporting(&self) -> bool;
 }
@@ -28,13 +28,13 @@ pub trait ProcessingConfig: Send + Sync {
 pub trait ProgressReporter: Send + Sync {
     /// 処理開始時の報告
     async fn report_started(&self, total_files: usize);
-    
+
     /// 進捗更新の報告
     async fn report_progress(&self, completed: usize, total: usize);
-    
+
     /// エラー発生時の報告
     async fn report_error(&self, file_path: &str, error: &str);
-    
+
     /// 処理完了時の報告
     async fn report_completed(&self, total_processed: usize, total_errors: usize);
 }
@@ -50,13 +50,13 @@ pub trait HashPersistence: Send + Sync {
         hash: &str,
         metadata: &ProcessingMetadata,
     ) -> Result<()>;
-    
+
     /// バッチでのハッシュ保存
     async fn store_batch(
         &self,
         results: &[(String, String, String, u64, ProcessingMetadata)],
     ) -> Result<()>;
-    
+
     /// 永続化の完了処理
     async fn finalize(&self) -> Result<()>;
 }

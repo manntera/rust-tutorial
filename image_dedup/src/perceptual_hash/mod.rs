@@ -4,11 +4,11 @@ use image::DynamicImage;
 use mockall::automock;
 use std::fmt;
 
+pub mod average_config;
 pub mod average_hash;
-pub mod dct_hash;
 pub mod config;
 pub mod dct_config;
-pub mod average_config;
+pub mod dct_hash;
 pub mod difference_config;
 pub mod factory;
 
@@ -57,7 +57,7 @@ impl HashResult {
             .collect::<Vec<_>>()
             .join("")
     }
-    
+
     /// ハッシュをu64として取得（ハミング距離計算用）
     pub fn to_u64(&self) -> u64 {
         let mut result = 0u64;
@@ -233,12 +233,7 @@ mod tests {
 
     #[test]
     fn test_comparison_result_creation() {
-        let result = ComparisonResult::new(
-            5,
-            10,
-            HashAlgorithm::Average { size: 64 },
-            64,
-        );
+        let result = ComparisonResult::new(5, 10, HashAlgorithm::Average { size: 64 }, 64);
 
         assert_eq!(result.distance, 5);
         assert_eq!(result.threshold_used, 10);
@@ -250,12 +245,7 @@ mod tests {
 
     #[test]
     fn test_comparison_result_not_similar() {
-        let result = ComparisonResult::new(
-            15,
-            10,
-            HashAlgorithm::Average { size: 64 },
-            64,
-        );
+        let result = ComparisonResult::new(15, 10, HashAlgorithm::Average { size: 64 }, 64);
 
         assert_eq!(result.distance, 15);
         assert!(!result.is_similar);
@@ -263,12 +253,7 @@ mod tests {
 
     #[test]
     fn test_comparison_result_zero_distance() {
-        let result = ComparisonResult::new(
-            0,
-            10,
-            HashAlgorithm::DCT { size: 32 },
-            32,
-        );
+        let result = ComparisonResult::new(0, 10, HashAlgorithm::DCT { size: 32 }, 32);
 
         assert_eq!(result.distance, 0);
         assert!(result.is_similar);
@@ -277,12 +262,7 @@ mod tests {
 
     #[test]
     fn test_comparison_result_max_distance() {
-        let result = ComparisonResult::new(
-            64,
-            10,
-            HashAlgorithm::Average { size: 64 },
-            64,
-        );
+        let result = ComparisonResult::new(64, 10, HashAlgorithm::Average { size: 64 }, 64);
 
         assert_eq!(result.distance, 64);
         assert!(!result.is_similar);

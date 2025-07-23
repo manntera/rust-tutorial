@@ -1,6 +1,6 @@
 use anyhow::Result;
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct HashEntry {
@@ -47,30 +47,36 @@ pub async fn execute_find_dups(
 ) -> Result<()> {
     // Validate input file
     if !hash_database.exists() {
-        anyhow::bail!("Hash database file does not exist: {}", hash_database.display());
+        anyhow::bail!(
+            "Hash database file does not exist: {}",
+            hash_database.display()
+        );
     }
-    
+
     println!("🔍 画像重複検出ツール - find-dupsコマンド");
     println!("📄 ハッシュデータベース: {}", hash_database.display());
     println!("📄 出力ファイル: {}", output.display());
     println!("🎯 類似度閾値: {threshold} (ハミング距離)");
-    
+
     // Read hash entries from JSON file
     let json_content = std::fs::read_to_string(&hash_database)?;
     let hash_entries: Vec<HashEntry> = serde_json::from_str(&json_content)?;
-    
-    println!("📊 読み込み完了: {}個のハッシュエントリ", hash_entries.len());
-    
+
+    println!(
+        "📊 読み込み完了: {}個のハッシュエントリ",
+        hash_entries.len()
+    );
+
     // Group similar images
     let mut groups: Vec<DuplicateGroup> = Vec::new();
     let mut processed: Vec<bool> = vec![false; hash_entries.len()];
     let mut group_id = 0;
-    
+
     for i in 0..hash_entries.len() {
         if processed[i] {
             continue;
         }
-        
+
         let mut group = DuplicateGroup {
             group_id,
             files: vec![DuplicateFile {
@@ -79,16 +85,16 @@ pub async fn execute_find_dups(
                 distance_from_first: 0,
             }],
         };
-        
+
         processed[i] = true;
         let base_hash = hash_entries[i].hash_bits;
-        
+
         // Find all similar images
         for j in (i + 1)..hash_entries.len() {
             if processed[j] {
                 continue;
             }
-            
+
             let distance = hamming_distance(base_hash, hash_entries[j].hash_bits);
             if distance <= threshold {
                 group.files.push(DuplicateFile {
@@ -99,14 +105,14 @@ pub async fn execute_find_dups(
                 processed[j] = true;
             }
         }
-        
+
         // Only add groups with duplicates
         if group.files.len() > 1 {
             groups.push(group);
             group_id += 1;
         }
     }
-    
+
     // Create report
     let total_duplicates: usize = groups.iter().map(|g| g.files.len() - 1).sum();
     let report = DuplicatesReport {
@@ -115,7 +121,7 @@ pub async fn execute_find_dups(
         threshold,
         groups,
     };
-    
+
     // Create output directory if it doesn't exist
     if let Some(parent) = output.parent() {
         std::fs::create_dir_all(parent)?;
@@ -124,13 +130,13 @@ pub async fn execute_find_dups(
     // Save report to JSON
     let json = serde_json::to_string_pretty(&report)?;
     std::fs::write(&output, json)?;
-    
+
     println!("\n✅ 分析完了!");
     println!("📊 結果:");
     println!("   - 重複グループ数: {}", report.total_groups);
     println!("   - 重複ファイル総数: {}", report.total_duplicates);
     println!("📄 結果は {} に保存されました", output.display());
-    
+
     // Display sample results
     if report.total_groups > 0 {
         println!("\n📌 重複例 (最初の3グループ):");
@@ -141,15 +147,15 @@ pub async fn execute_find_dups(
             }
         }
     }
-    
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     fn create_test_hash_entry(file_path: &str, hash: &str, hash_bits: u64) -> HashEntry {
         HashEntry {
@@ -174,7 +180,7 @@ mod tests {
     async fn test_find_dups_nonexistent_database() {
         let nonexistent = PathBuf::from("nonexistent.json");
         let output = PathBuf::from("output.json");
-        
+
         let result = execute_find_dups(nonexistent, output, 5).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("does not exist"));
@@ -185,12 +191,12 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let hash_db = temp_dir.path().join("hashes.json");
         let output = temp_dir.path().join("duplicates.json");
-        
+
         // Create empty database
         fs::write(&hash_db, "[]").unwrap();
-        
+
         execute_find_dups(hash_db, output.clone(), 5).await.unwrap();
-        
+
         // Check output file
         let content = fs::read_to_string(&output).unwrap();
         let report: DuplicatesReport = serde_json::from_str(&content).unwrap();
@@ -220,11 +226,11 @@ mod tests {
         // Check output file
         let content = fs::read_to_string(&output).unwrap();
         let report: DuplicatesReport = serde_json::from_str(&content).unwrap();
-        
+
         assert_eq!(report.total_groups, 1);
         assert_eq!(report.total_duplicates, 2); // image2 and image3 are duplicates of image1
         assert_eq!(report.threshold, 3);
-        
+
         let group = &report.groups[0];
         assert_eq!(group.files.len(), 3);
         assert_eq!(group.files[0].path, "image1.jpg");
@@ -254,7 +260,7 @@ mod tests {
         // Check output file
         let content = fs::read_to_string(&output).unwrap();
         let report: DuplicatesReport = serde_json::from_str(&content).unwrap();
-        
+
         assert_eq!(report.total_groups, 0);
         assert_eq!(report.total_duplicates, 0);
     }
@@ -286,7 +292,7 @@ mod tests {
         // Check output file
         let content = fs::read_to_string(&output).unwrap();
         let report: DuplicatesReport = serde_json::from_str(&content).unwrap();
-        
+
         assert_eq!(report.total_groups, 2);
         assert_eq!(report.total_duplicates, 3); // (2-1) + (3-1) = 1 + 2 = 3
 
@@ -294,7 +300,7 @@ mod tests {
         let group1 = &report.groups[0];
         assert_eq!(group1.files.len(), 2);
         assert_eq!(group1.files[0].path, "image1.jpg");
-        
+
         // Check second group
         let group2 = &report.groups[1];
         assert_eq!(group2.files.len(), 3);
@@ -330,7 +336,7 @@ mod tests {
         // Check output file
         let content = fs::read_to_string(&output).unwrap();
         let report: DuplicatesReport = serde_json::from_str(&content).unwrap();
-        
+
         assert_eq!(report.total_groups, 0); // No groups with duplicates
         assert_eq!(report.total_duplicates, 0);
     }
@@ -339,7 +345,11 @@ mod tests {
     async fn test_find_dups_output_directory_creation() {
         let temp_dir = TempDir::new().unwrap();
         let hash_db = temp_dir.path().join("hashes.json");
-        let nested_output = temp_dir.path().join("nested").join("deep").join("duplicates.json");
+        let nested_output = temp_dir
+            .path()
+            .join("nested")
+            .join("deep")
+            .join("duplicates.json");
 
         // Create empty database
         fs::write(&hash_db, "[]").unwrap();
@@ -372,7 +382,7 @@ mod tests {
         // Test that structures can be serialized and deserialized
         let json = serde_json::to_string(&report).unwrap();
         let deserialized: DuplicatesReport = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(deserialized.total_groups, 1);
         assert_eq!(deserialized.threshold, 5);
         assert_eq!(deserialized.groups[0].group_id, 0);
