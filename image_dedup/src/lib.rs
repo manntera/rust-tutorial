@@ -1,8 +1,10 @@
 // 新しい機能別フォルダ構成
 pub mod app;
+pub mod benchmarks;
 pub mod cli;
 pub mod core;
 pub mod engine;
+pub mod factories;
 pub mod services;
 
 // 従来のモジュール

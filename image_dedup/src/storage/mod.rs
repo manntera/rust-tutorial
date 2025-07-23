@@ -53,6 +53,30 @@ pub trait StorageBackend: Send + Sync {
     }
 }
 
+// StorageBackend for Box<dyn StorageBackend>
+#[async_trait]
+impl StorageBackend for Box<dyn StorageBackend> {
+    async fn list_items(&self, prefix: &str) -> Result<Vec<StorageItem>> {
+        self.as_ref().list_items(prefix).await
+    }
+
+    async fn read_item(&self, id: &str) -> Result<Vec<u8>> {
+        self.as_ref().read_item(id).await
+    }
+
+    async fn exists(&self, id: &str) -> Result<bool> {
+        self.as_ref().exists(id).await
+    }
+
+    async fn delete_item(&self, id: &str) -> Result<()> {
+        self.as_ref().delete_item(id).await
+    }
+
+    fn is_image_file(&self, item: &StorageItem) -> bool {
+        self.as_ref().is_image_file(item)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

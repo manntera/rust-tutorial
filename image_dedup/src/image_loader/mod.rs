@@ -48,6 +48,34 @@ pub trait ImageLoaderBackend: Send + Sync {
     }
 }
 
+// ImageLoaderBackend for Box<dyn ImageLoaderBackend>
+#[async_trait]
+impl ImageLoaderBackend for Box<dyn ImageLoaderBackend> {
+    async fn load_from_bytes(&self, data: &[u8]) -> Result<LoadResult> {
+        self.as_ref().load_from_bytes(data).await
+    }
+
+    async fn load_from_path(&self, path: &Path) -> Result<LoadResult> {
+        self.as_ref().load_from_path(path).await
+    }
+
+    async fn load_with_format(&self, data: &[u8], format: image::ImageFormat) -> Result<LoadResult> {
+        self.as_ref().load_with_format(data, format).await
+    }
+
+    fn strategy_name(&self) -> &'static str {
+        self.as_ref().strategy_name()
+    }
+
+    fn max_supported_pixels(&self) -> Option<u64> {
+        self.as_ref().max_supported_pixels()
+    }
+
+    fn estimate_memory_usage(&self, width: u32, height: u32) -> u64 {
+        self.as_ref().estimate_memory_usage(width, height)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

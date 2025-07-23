@@ -9,7 +9,7 @@
     "implementation": "dct",
     "parameters": {
       "size": 32,
-      "quality_factor": 0.95
+      "quality_factor": 1.0
     }
   },
   "storage": {
@@ -19,9 +19,9 @@
   "processing_config": {
     "implementation": "default",
     "parameters": {
-      "max_concurrent": 4,
-      "buffer_size": 100,
-      "batch_size": 10,
+      "max_concurrent": 16,
+      "buffer_size": 500,
+      "batch_size": 100,
       "enable_progress": true
     }
   },
@@ -34,7 +34,7 @@
   "hash_persistence": {
     "implementation": "streaming_json",
     "parameters": {
-      "buffer_size": 50
+      "buffer_size": 300
     }
   }
 }

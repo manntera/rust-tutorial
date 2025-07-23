@@ -1,14 +1,4 @@
-use crate::{
-    core::{HashPersistence, ProcessingConfig, ProgressReporter},
-    engine::ProcessingEngine,
-    image_loader::ImageLoaderBackend,
-    image_loader::standard::StandardImageLoader,
-    perceptual_hash::PerceptualHashBackend,
-    perceptual_hash::config::{AlgorithmConfig, DynamicAlgorithmConfig},
-    services::{ConsoleProgressReporter, DefaultProcessingConfig, StreamingJsonHashPersistence},
-    storage::StorageBackend,
-    storage::local::LocalStorageBackend,
-};
+use crate::core::{DependencyContainer, DependencyContainerBuilder};
 use anyhow::Result;
 use std::path::PathBuf;
 
@@ -20,29 +10,11 @@ pub struct ScanConfig {
     pub force: bool,
 }
 
-/// Dependencies struct for scan command to reduce argument count
-pub struct ScanDependencies<L, H, S, C, R, P> {
-    pub loader: L,
-    pub hasher: H,
-    pub storage: S,
-    pub config: C,
-    pub reporter: R,
-    pub persistence: P,
-}
-
-/// Zero-cost abstraction scan command with trait bounds
-pub async fn execute_scan_generic<L, H, S, C, R, P>(
+/// Unified scan command using DI container
+pub async fn execute_scan_with_container(
     config: ScanConfig,
-    deps: ScanDependencies<L, H, S, C, R, P>,
-) -> Result<()>
-where
-    L: ImageLoaderBackend + Send + Sync + Clone + 'static,
-    H: PerceptualHashBackend + Send + Sync + Clone + 'static,
-    S: StorageBackend + Send + Sync + 'static,
-    C: ProcessingConfig + Send + Sync,
-    R: ProgressReporter + Send + Sync + Clone + 'static,
-    P: HashPersistence + Send + Sync + Clone + 'static,
-{
+    container: DependencyContainer,
+) -> Result<()> {
     // Validate target directory
     if !config.target_directory.exists() {
         anyhow::bail!(
@@ -79,15 +51,11 @@ where
     println!("📄 出力ファイル: {}", config.output.display());
     println!("🧵 使用スレッド数: {thread_count}");
 
-    // Build processing engine using injected dependencies
-    let engine = ProcessingEngine::new(
-        deps.loader,
-        deps.hasher,
-        deps.storage,
-        deps.config,
-        deps.reporter,
-        deps.persistence,
-    );
+    // Resolve all dependencies from container
+    let dependencies = container.resolve_all_dependencies(&config.output)?;
+    
+    // Build processing engine using resolved dependencies
+    let engine = dependencies.create_processing_engine();
 
     println!("⚙️  設定:");
     println!(
@@ -136,7 +104,7 @@ where
     Ok(())
 }
 
-/// Default convenience function for scan command
+/// Unified scan command with dynamic dependency injection
 pub async fn execute_scan(
     target_directory: PathBuf,
     output: PathBuf,
@@ -146,8 +114,6 @@ pub async fn execute_scan(
     hash_size: u32,
     config_file: Option<PathBuf>,
 ) -> Result<()> {
-    let _thread_count = threads.unwrap_or_else(num_cpus::get);
-
     let scan_config = ScanConfig {
         target_directory,
         output: output.clone(),
@@ -160,189 +126,55 @@ pub async fn execute_scan(
         return execute_scan_from_config_file(scan_config, config_path).await;
     }
 
-    // ハッシャーを作成（具体的な型で分岐）
-    match algorithm.as_str() {
-        "dct" => {
-            let config = crate::perceptual_hash::dct_config::DctConfig {
-                size: hash_size,
-                quality_factor: 1.0,
-            };
-            config.validate()?;
-            let hasher = config.create_hasher()?;
-            execute_scan_with_dct_hasher(scan_config, hasher).await
-        }
-        "average" => {
-            let config = crate::perceptual_hash::average_config::AverageConfig { size: hash_size };
-            config.validate()?;
-            let hasher = config.create_hasher()?;
-            execute_scan_with_average_hasher(scan_config, hasher).await
-        }
-        "difference" => {
-            let config =
-                crate::perceptual_hash::difference_config::DifferenceConfig { size: hash_size };
-            config.validate()?;
-            let hasher = config.create_hasher()?;
-            execute_scan_with_difference_hasher(scan_config, hasher).await
-        }
-        _ => {
-            anyhow::bail!(
-                "Unsupported algorithm: {}. Available algorithms: dct, average, difference",
-                algorithm
-            );
-        }
-    }
+    // DIコンテナを構築（アルゴリズムとパラメータを指定）
+    let thread_count = threads.unwrap_or_else(num_cpus::get);
+    
+    let quality_factor = if algorithm == "dct" { 1.0 } else { 0.0 };
+    
+    let container = DependencyContainerBuilder::new()
+        .with_image_loader("standard", serde_json::json!({
+            "max_dimension": 512
+        }))
+        .with_perceptual_hash(&algorithm, serde_json::json!({
+            "size": hash_size,
+            "quality_factor": quality_factor
+        }))
+        .with_storage("local", serde_json::json!({}))
+        .with_processing_config("default", serde_json::json!({
+            "max_concurrent": thread_count * 2,
+            "buffer_size": 100,
+            "batch_size": 50,
+            "enable_progress": true
+        }))
+        .with_progress_reporter("console", serde_json::json!({
+            "quiet": false
+        }))
+        .with_hash_persistence("streaming_json", serde_json::json!({
+            "buffer_size": 100
+        }))
+        .build();
+
+    execute_scan_with_container(scan_config, container).await
 }
 
-/// DCTハッシャー用の専用scan実装
-async fn execute_scan_with_dct_hasher(
-    config: ScanConfig,
-    hasher: crate::perceptual_hash::dct_hash::DctHasher,
-) -> Result<()> {
-    let thread_count = config.threads.unwrap_or_else(num_cpus::get);
-    let output = &config.output;
-
-    let persistence = StreamingJsonHashPersistence::new(output);
-
-    // DCT設定情報を設定
-    let dct_params = serde_json::json!({
-        "size": hasher.get_size(),
-        "quality_factor": hasher.get_quality_factor()
-    });
-    persistence
-        .set_scan_info("dct".to_string(), dct_params)
-        .await?;
-
-    let scan_deps = ScanDependencies {
-        loader: StandardImageLoader::with_max_dimension(512),
-        hasher,
-        storage: LocalStorageBackend::new(),
-        config: DefaultProcessingConfig::new(thread_count)
-            .with_max_concurrent(thread_count * 2)
-            .with_batch_size(50)
-            .with_progress_reporting(true),
-        reporter: ConsoleProgressReporter::new(),
-        persistence,
-    };
-
-    execute_scan_generic(config, scan_deps).await
-}
-
-/// Averageハッシャー用の専用scan実装
-async fn execute_scan_with_average_hasher(
-    config: ScanConfig,
-    hasher: crate::perceptual_hash::average_hash::AverageHasher,
-) -> Result<()> {
-    let thread_count = config.threads.unwrap_or_else(num_cpus::get);
-    let output = &config.output;
-
-    let persistence = StreamingJsonHashPersistence::new(output);
-
-    // Average設定情報を設定
-    let avg_params = serde_json::json!({
-        "size": hasher.get_size()
-    });
-    persistence
-        .set_scan_info("average".to_string(), avg_params)
-        .await?;
-
-    let scan_deps = ScanDependencies {
-        loader: StandardImageLoader::with_max_dimension(512),
-        hasher,
-        storage: LocalStorageBackend::new(),
-        config: DefaultProcessingConfig::new(thread_count)
-            .with_max_concurrent(thread_count * 2)
-            .with_batch_size(50)
-            .with_progress_reporting(true),
-        reporter: ConsoleProgressReporter::new(),
-        persistence,
-    };
-
-    execute_scan_generic(config, scan_deps).await
-}
-
-/// Differenceハッシャー用の専用scan実装  
-async fn execute_scan_with_difference_hasher(
-    config: ScanConfig,
-    hasher: crate::perceptual_hash::average_hash::DifferenceHasher,
-) -> Result<()> {
-    let thread_count = config.threads.unwrap_or_else(num_cpus::get);
-    let output = &config.output;
-
-    let persistence = StreamingJsonHashPersistence::new(output);
-
-    // Difference設定情報を設定
-    let diff_params = serde_json::json!({
-        "size": hasher.get_size()
-    });
-    persistence
-        .set_scan_info("difference".to_string(), diff_params)
-        .await?;
-
-    let scan_deps = ScanDependencies {
-        loader: StandardImageLoader::with_max_dimension(512),
-        hasher,
-        storage: LocalStorageBackend::new(),
-        config: DefaultProcessingConfig::new(thread_count)
-            .with_max_concurrent(thread_count * 2)
-            .with_batch_size(50)
-            .with_progress_reporting(true),
-        reporter: ConsoleProgressReporter::new(),
-        persistence,
-    };
-
-    execute_scan_generic(config, scan_deps).await
-}
 
 /// 設定ファイルから読み込んでスキャンを実行
 async fn execute_scan_from_config_file(config: ScanConfig, config_path: PathBuf) -> Result<()> {
-    // 設定ファイルを読み込み
-    let config_json = std::fs::read_to_string(&config_path)
-        .map_err(|e| anyhow::anyhow!("設定ファイルの読み込みエラー: {}", e))?;
-
-    // JSONを解析
-    let dynamic_config: DynamicAlgorithmConfig = serde_json::from_str(&config_json)
-        .map_err(|e| anyhow::anyhow!("設定ファイルの解析エラー: {}", e))?;
-
     println!("📄 設定ファイル: {}", config_path.display());
-    println!("🔧 アルゴリズム: {}", dynamic_config.algorithm);
-    println!(
-        "⚙️  パラメータ: {}",
-        serde_json::to_string_pretty(&dynamic_config.parameters)?
-    );
 
-    // アルゴリズムに応じて適切な関数を呼び出し
-    match dynamic_config.algorithm.as_str() {
-        "dct" => {
-            let dct_config: crate::perceptual_hash::dct_config::DctConfig =
-                serde_json::from_value(dynamic_config.parameters)
-                    .map_err(|e| anyhow::anyhow!("DCT設定の解析エラー: {}", e))?;
-            dct_config.validate()?;
-            let hasher = dct_config.create_hasher()?;
-            execute_scan_with_dct_hasher(config, hasher).await
-        }
-        "average" => {
-            let avg_config: crate::perceptual_hash::average_config::AverageConfig =
-                serde_json::from_value(dynamic_config.parameters)
-                    .map_err(|e| anyhow::anyhow!("Average設定の解析エラー: {}", e))?;
-            avg_config.validate()?;
-            let hasher = avg_config.create_hasher()?;
-            execute_scan_with_average_hasher(config, hasher).await
-        }
-        "difference" => {
-            let diff_config: crate::perceptual_hash::difference_config::DifferenceConfig =
-                serde_json::from_value(dynamic_config.parameters)
-                    .map_err(|e| anyhow::anyhow!("Difference設定の解析エラー: {}", e))?;
-            diff_config.validate()?;
-            let hasher = diff_config.create_hasher()?;
-            execute_scan_with_difference_hasher(config, hasher).await
-        }
-        _ => {
-            anyhow::bail!(
-                "サポートされていないアルゴリズム: {}. 利用可能: dct, average, difference",
-                dynamic_config.algorithm
-            );
-        }
-    }
+    // DIコンテナを設定ファイルから作成
+    let container = DependencyContainer::from_config_file(&config_path)
+        .map_err(|e| anyhow::anyhow!("設定ファイルからのDIコンテナ作成エラー: {}", e))?;
+
+    println!("✅ 設定ファイルから依存関係を正常に読み込みました");
+    println!("🔧 ImageLoader: {}", container.config().image_loader.implementation);
+    println!("🔧 PerceptualHash: {}", container.config().perceptual_hash.implementation);
+    println!("🔧 Storage: {}", container.config().storage.implementation);
+    println!("🔧 ProcessingConfig: {}", container.config().processing_config.implementation);
+    println!("🔧 ProgressReporter: {}", container.config().progress_reporter.implementation);
+    println!("🔧 HashPersistence: {}", container.config().hash_persistence.implementation);
+
+    execute_scan_with_container(config, container).await
 }
 
 #[cfg(test)]
@@ -403,5 +235,47 @@ mod tests {
         .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
+    }
+
+    #[tokio::test]
+    async fn test_scan_with_config_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("test_config.json");
+        let output_path = temp_dir.path().join("output.json");
+        let target_dir = TempDir::new().unwrap();
+
+        // テスト用設定ファイルを作成
+        let test_config = crate::core::DependencyConfig::for_testing();
+        let config_json = serde_json::to_string_pretty(&test_config).unwrap();
+        fs::write(&config_path, config_json).unwrap();
+
+        let scan_config = ScanConfig {
+            target_directory: target_dir.path().to_path_buf(),
+            output: output_path,
+            threads: Some(1),
+            force: true,
+        };
+
+        let result = execute_scan_from_config_file(scan_config, config_path).await;
+        // 空のディレクトリなので処理は成功するはず
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_scan_with_container() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_path = temp_dir.path().join("test_output.json");
+        let target_dir = TempDir::new().unwrap();
+
+        let scan_config = ScanConfig {
+            target_directory: target_dir.path().to_path_buf(),
+            output: output_path,
+            threads: Some(1),
+            force: true,
+        };
+
+        let container = DependencyContainer::with_preset("testing").unwrap();
+        let result = execute_scan_with_container(scan_config, container).await;
+        assert!(result.is_ok());
     }
 }

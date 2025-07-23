@@ -41,6 +41,9 @@ pub enum ProcessingError {
         source: anyhow::Error,
     },
 
+    #[error("依存関係注入エラー: {message}")]
+    DependencyInjectionError { message: String },
+
     #[error("内部エラー: {source}")]
     InternalError {
         #[source]
@@ -93,6 +96,13 @@ impl ProcessingError {
         Self::ImageProcessingError {
             file_path: file_path.into(),
             source,
+        }
+    }
+
+    /// 依存関係注入エラーの作成
+    pub fn dependency_injection(message: impl Into<String>) -> Self {
+        Self::DependencyInjectionError {
+            message: message.into(),
         }
     }
 

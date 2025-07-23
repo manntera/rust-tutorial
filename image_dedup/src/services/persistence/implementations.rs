@@ -129,6 +129,11 @@ impl HashPersistence for MemoryHashPersistence {
         Ok(())
     }
 
+    async fn set_scan_info(&self, _operation: String, _info: serde_json::Value) -> Result<()> {
+        // メモリ実装では特に何もしない
+        Ok(())
+    }
+
     async fn finalize(&self) -> Result<()> {
         *self.finalized
             .lock()
@@ -311,6 +316,11 @@ impl HashPersistence for JsonHashPersistence {
             }
         }
 
+        Ok(())
+    }
+
+    async fn set_scan_info(&self, _operation: String, _info: serde_json::Value) -> Result<()> {
+        // JSON実装では特に何もしない（シンプルな配列形式のため）
         Ok(())
     }
 
@@ -927,6 +937,19 @@ impl HashPersistence for StreamingJsonHashPersistence {
             self.flush_buffer().await?
         }
 
+        Ok(())
+    }
+
+    async fn set_scan_info(&self, operation: String, info: serde_json::Value) -> Result<()> {
+        // 既存のpub set_scan_infoメソッドを使用（算出的パラメータで呼び出し）
+        let scan_info = ScanInfo {
+            algorithm: operation,
+            parameters: info,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            total_files: 0, // 後で更新
+        };
+
+        *self.scan_info.lock().await = Some(scan_info);
         Ok(())
     }
 

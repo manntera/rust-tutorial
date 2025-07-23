@@ -68,6 +68,22 @@ where
     ///
     /// より細かい制御が必要な場合のAPI
     pub async fn process_files(&self, files: Vec<String>) -> ProcessingResult<ProcessingSummary> {
+        // scan_infoを設定
+        let scan_info = serde_json::json!({
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "total_files": files.len(),
+            "algorithm": self.hasher.algorithm_name(),
+            "settings": {
+                "max_concurrent": self.config.max_concurrent_tasks(),
+                "batch_size": self.config.batch_size(),
+                "buffer_size": self.config.channel_buffer_size()
+            }
+        });
+        
+        // scan_infoをpersistenceに設定
+        self.persistence.as_ref().set_scan_info("scan".to_string(), scan_info).await
+            .map_err(|e| ProcessingError::parallel_execution(format!("scan_info設定エラー: {e}")))?;
+
         // 既にArcで管理されている依存関係を効率的に共有
         let pipeline = ProcessingPipeline::new(
             Arc::clone(&self.loader),

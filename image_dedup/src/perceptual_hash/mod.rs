@@ -122,6 +122,38 @@ pub trait PerceptualHashBackend: Send + Sync {
     }
 }
 
+// PerceptualHashBackend for Box<dyn PerceptualHashBackend>
+#[async_trait]
+impl PerceptualHashBackend for Box<dyn PerceptualHashBackend> {
+    async fn generate_hash(&self, image: &DynamicImage) -> Result<HashResult> {
+        self.as_ref().generate_hash(image).await
+    }
+
+    fn calculate_distance(&self, hash1: &HashResult, hash2: &HashResult) -> Result<u32> {
+        self.as_ref().calculate_distance(hash1, hash2)
+    }
+
+    fn are_similar(&self, hash1: &HashResult, hash2: &HashResult, threshold: u32) -> Result<bool> {
+        self.as_ref().are_similar(hash1, hash2, threshold)
+    }
+
+    fn algorithm(&self) -> &HashAlgorithm {
+        self.as_ref().algorithm()
+    }
+
+    fn algorithm_name(&self) -> &'static str {
+        self.as_ref().algorithm_name()
+    }
+
+    fn recommended_threshold(&self) -> u32 {
+        self.as_ref().recommended_threshold()
+    }
+
+    fn computational_complexity(&self) -> u8 {
+        self.as_ref().computational_complexity()
+    }
+}
+
 /// ハッシュの比較結果
 #[derive(Debug, Clone)]
 pub struct ComparisonResult {
