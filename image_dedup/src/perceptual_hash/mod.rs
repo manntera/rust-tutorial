@@ -6,6 +6,11 @@ use std::fmt;
 
 pub mod average_hash;
 pub mod dct_hash;
+pub mod config;
+pub mod dct_config;
+pub mod average_config;
+pub mod difference_config;
+pub mod factory;
 
 /// ハッシュアルゴリズムの種類
 #[derive(Debug, Clone, PartialEq)]

@@ -1,8 +1,9 @@
 use anyhow::Result;
 use std::path::PathBuf;
+use serde_json::json;
 use crate::{
     image_loader::standard::StandardImageLoader,
-    perceptual_hash::dct_hash::DCTHasher,
+    perceptual_hash::config::{DynamicAlgorithmConfig, AlgorithmConfig},
     storage::local::LocalStorageBackend,
     engine::ProcessingEngine,
     services::{
@@ -128,6 +129,9 @@ pub async fn execute_scan(
     output: PathBuf,
     threads: Option<usize>,
     force: bool,
+    algorithm: String,
+    hash_size: u32,
+    config_file: Option<PathBuf>,
 ) -> Result<()> {
     let thread_count = threads.unwrap_or_else(num_cpus::get);
     
@@ -138,19 +142,106 @@ pub async fn execute_scan(
         force,
     };
 
+    // ハッシャーを作成（具体的な型で分岐）
+    match algorithm.as_str() {
+        "dct" => {
+            let config = crate::perceptual_hash::dct_config::DctConfig {
+                size: hash_size,
+                quality_factor: 1.0,
+            };
+            config.validate()?;
+            let hasher = config.create_hasher()?;
+            return execute_scan_with_dct_hasher(scan_config, hasher).await;
+        }
+        "average" => {
+            let config = crate::perceptual_hash::average_config::AverageConfig {
+                size: hash_size,
+            };
+            config.validate()?;
+            let hasher = config.create_hasher()?;
+            return execute_scan_with_average_hasher(scan_config, hasher).await;
+        }
+        "difference" => {
+            let config = crate::perceptual_hash::difference_config::DifferenceConfig {
+                size: hash_size,
+            };
+            config.validate()?;
+            let hasher = config.create_hasher()?;
+            return execute_scan_with_difference_hasher(scan_config, hasher).await;
+        }
+        _ => {
+            anyhow::bail!("Unsupported algorithm: {}. Available algorithms: dct, average, difference", algorithm);
+        }
+    }
+}
+
+/// DCTハッシャー用の専用scan実装
+async fn execute_scan_with_dct_hasher(
+    config: ScanConfig,
+    hasher: crate::perceptual_hash::dct_hash::DctHasher,
+) -> Result<()> {
+    let thread_count = config.threads.unwrap_or_else(num_cpus::get);
+    let output = &config.output;
+    
     let scan_deps = ScanDependencies {
         loader: StandardImageLoader::with_max_dimension(512),
-        hasher: DCTHasher::new(8),
+        hasher,
         storage: LocalStorageBackend::new(),
         config: DefaultProcessingConfig::new(thread_count)
             .with_max_concurrent(thread_count * 2)
             .with_batch_size(50)
             .with_progress_reporting(true),
         reporter: ConsoleProgressReporter::new(),
-        persistence: StreamingJsonHashPersistence::new(&output),
+        persistence: StreamingJsonHashPersistence::new(output),
     };
 
-    execute_scan_generic(scan_config, scan_deps).await
+    execute_scan_generic(config, scan_deps).await
+}
+
+/// Averageハッシャー用の専用scan実装
+async fn execute_scan_with_average_hasher(
+    config: ScanConfig,
+    hasher: crate::perceptual_hash::average_hash::AverageHasher,
+) -> Result<()> {
+    let thread_count = config.threads.unwrap_or_else(num_cpus::get);
+    let output = &config.output;
+    
+    let scan_deps = ScanDependencies {
+        loader: StandardImageLoader::with_max_dimension(512),
+        hasher,
+        storage: LocalStorageBackend::new(),
+        config: DefaultProcessingConfig::new(thread_count)
+            .with_max_concurrent(thread_count * 2)
+            .with_batch_size(50)
+            .with_progress_reporting(true),
+        reporter: ConsoleProgressReporter::new(),
+        persistence: StreamingJsonHashPersistence::new(output),
+    };
+
+    execute_scan_generic(config, scan_deps).await
+}
+
+/// Differenceハッシャー用の専用scan実装  
+async fn execute_scan_with_difference_hasher(
+    config: ScanConfig,
+    hasher: crate::perceptual_hash::average_hash::DifferenceHasher,
+) -> Result<()> {
+    let thread_count = config.threads.unwrap_or_else(num_cpus::get);
+    let output = &config.output;
+    
+    let scan_deps = ScanDependencies {
+        loader: StandardImageLoader::with_max_dimension(512),
+        hasher,
+        storage: LocalStorageBackend::new(),
+        config: DefaultProcessingConfig::new(thread_count)
+            .with_max_concurrent(thread_count * 2)
+            .with_batch_size(50)
+            .with_progress_reporting(true),
+        reporter: ConsoleProgressReporter::new(),
+        persistence: StreamingJsonHashPersistence::new(output),
+    };
+
+    execute_scan_generic(config, scan_deps).await
 }
 
 #[cfg(test)]

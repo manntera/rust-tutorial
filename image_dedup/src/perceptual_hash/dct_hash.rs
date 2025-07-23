@@ -7,22 +7,22 @@ use std::time::Instant;
 
 /// DCTベースの知覚ハッシュ実装
 #[derive(Clone)]
-pub struct DCTHasher {
+pub struct DctHasher {
     algorithm: HashAlgorithm,
     hash_size: u32,
 }
 
-impl DCTHasher {
-    pub fn new(size: u32) -> Self {
-        Self {
+impl DctHasher {
+    pub fn new(size: u32) -> Result<Self> {
+        Ok(Self {
             algorithm: HashAlgorithm::DCT { size },
             hash_size: size,
-        }
+        })
     }
 }
 
 #[async_trait]
-impl PerceptualHashBackend for DCTHasher {
+impl PerceptualHashBackend for DctHasher {
     async fn generate_hash(&self, image: &DynamicImage) -> Result<HashResult> {
         let start_time = Instant::now();
 
@@ -99,7 +99,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_dct_hash_generation() {
-        let hasher = DCTHasher::new(8);
+        let hasher = DctHasher::new(8);
         let image = DynamicImage::ImageRgb8(RgbImage::new(100, 100));
 
         let result = hasher.generate_hash(&image).await.unwrap();
@@ -113,7 +113,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_dct_hash_similarity() {
-        let hasher = DCTHasher::new(8);
+        let hasher = DctHasher::new(8);
 
         // 同じ画像
         let image1 = DynamicImage::ImageRgb8(RgbImage::new(50, 50));
@@ -131,8 +131,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_dct_hash_different_sizes() {
-        let hasher8 = DCTHasher::new(8);
-        let hasher16 = DCTHasher::new(16);
+        let hasher8 = DctHasher::new(8);
+        let hasher16 = DctHasher::new(16);
 
         let image = DynamicImage::ImageRgb8(RgbImage::new(100, 100));
 

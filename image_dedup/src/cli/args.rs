@@ -28,6 +28,18 @@ pub enum Commands {
         /// Force overwrite existing output file without warning
         #[arg(short, long)]
         force: bool,
+        
+        /// Hash algorithm to use
+        #[arg(short = 'a', long, default_value = "dct")]
+        algorithm: String,
+        
+        /// Hash size (typically 8, 16, or 32)
+        #[arg(long, default_value = "8")]
+        hash_size: u32,
+        
+        /// Configuration file path (JSON format)
+        #[arg(short = 'c', long)]
+        config: Option<PathBuf>,
     },
     
     /// Find duplicate images using hash database
