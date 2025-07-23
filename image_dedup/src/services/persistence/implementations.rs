@@ -16,7 +16,7 @@ use tokio::sync::Mutex as AsyncMutex;
 /// モックテストにも使用可能な完全機能実装
 #[derive(Debug, Clone)]
 pub struct MemoryHashPersistence {
-    storage: Arc<Mutex<HashMap<String, (String, ProcessingMetadata)>>>,
+    storage: Arc<Mutex<HashMap<String, (String, String, u64, ProcessingMetadata)>>>,
     finalized: Arc<Mutex<bool>>,
 }
 
@@ -36,7 +36,9 @@ impl MemoryHashPersistence {
     
     /// テスト用：保存されたデータを取得
     pub fn get_stored_data(&self) -> HashMap<String, (String, ProcessingMetadata)> {
-        self.storage.lock().unwrap().clone()
+        self.storage.lock().unwrap().iter()
+            .map(|(k, (hash, _alg, _bits, meta))| (k.clone(), (hash.clone(), meta.clone())))
+            .collect()
     }
     
     /// テスト用：完了状態を確認
@@ -72,17 +74,17 @@ impl HashPersistence for MemoryHashPersistence {
         self.storage
             .lock()
             .unwrap()
-            .insert(file_path.to_string(), (hash.to_string(), metadata.clone()));
+            .insert(file_path.to_string(), (hash.to_string(), "DCT".to_string(), 0u64, metadata.clone()));
         Ok(())
     }
     
     async fn store_batch(
         &self,
-        results: &[(String, String, ProcessingMetadata)],
+        results: &[(String, String, String, u64, ProcessingMetadata)],
     ) -> Result<()> {
         let mut storage = self.storage.lock().unwrap();
-        for (path, hash, metadata) in results {
-            storage.insert(path.clone(), (hash.clone(), metadata.clone()));
+        for (path, hash, algorithm, hash_bits, metadata) in results {
+            storage.insert(path.clone(), (hash.clone(), algorithm.clone(), *hash_bits, metadata.clone()));
         }
         Ok(())
     }
@@ -98,6 +100,9 @@ impl HashPersistence for MemoryHashPersistence {
 pub struct HashEntry {
     pub file_path: String,
     pub hash: String,
+    pub algorithm: String,
+    pub hash_bits: u64,
+    pub timestamp: String,
     pub metadata: ProcessingMetadata,
 }
 
@@ -157,18 +162,12 @@ impl HashPersistence for JsonHashPersistence {
         hash: &str,
         metadata: &ProcessingMetadata,
     ) -> Result<()> {
-        let entry = HashEntry {
-            file_path: file_path.to_string(),
-            hash: hash.to_string(),
-            metadata: metadata.clone(),
-        };
-        
-        self.store_batch(&[(entry.file_path, entry.hash, entry.metadata)]).await
+        self.store_batch(&[(file_path.to_string(), hash.to_string(), "DCT".to_string(), 0u64, metadata.clone())]).await
     }
     
     async fn store_batch(
         &self,
-        results: &[(String, String, ProcessingMetadata)],
+        results: &[(String, String, String, u64, ProcessingMetadata)],
     ) -> Result<()> {
         if results.is_empty() {
             return Ok(());
@@ -177,10 +176,13 @@ impl HashPersistence for JsonHashPersistence {
         self.initialize_file().await?;
         
         // エントリごとに個別にロックを取得
-        for (file_path, hash, metadata) in results {
+        for (file_path, hash, algorithm, hash_bits, metadata) in results {
             let entry = HashEntry {
                 file_path: file_path.clone(),
                 hash: hash.clone(),
+                algorithm: algorithm.clone(),
+                hash_bits: *hash_bits,
+                timestamp: chrono::Utc::now().to_rfc3339(),
                 metadata: metadata.clone(),
             };
             
@@ -500,7 +502,7 @@ pub struct StreamingJsonHashPersistence {
     file_path: String,
     writer: Arc<AsyncMutex<Option<BufWriter<File>>>>,
     entries_written: Arc<AsyncMutex<usize>>,
-    buffer: Arc<AsyncMutex<Vec<(String, String, ProcessingMetadata)>>>,
+    buffer: Arc<AsyncMutex<Vec<(String, String, String, u64, ProcessingMetadata)>>>,
     buffer_size: usize,
 }
 
@@ -571,10 +573,13 @@ impl StreamingJsonHashPersistence {
         
         let mut entries_written = self.entries_written.lock().await;
         
-        for (file_path, hash, metadata) in buffer_guard.drain(..) {
+        for (file_path, hash, algorithm, hash_bits, metadata) in buffer_guard.drain(..) {
             let entry = HashEntry {
                 file_path,
                 hash,
+                algorithm,
+                hash_bits,
+                timestamp: chrono::Utc::now().to_rfc3339(),
                 metadata,
             };
             
@@ -614,12 +619,12 @@ impl HashPersistence for StreamingJsonHashPersistence {
         hash: &str,
         metadata: &ProcessingMetadata,
     ) -> Result<()> {
-        self.store_batch(&[(file_path.to_string(), hash.to_string(), metadata.clone())]).await
+        self.store_batch(&[(file_path.to_string(), hash.to_string(), "DCT".to_string(), 0u64, metadata.clone())]).await
     }
     
     async fn store_batch(
         &self,
-        results: &[(String, String, ProcessingMetadata)],
+        results: &[(String, String, String, u64, ProcessingMetadata)],
     ) -> Result<()> {
         if results.is_empty() {
             return Ok(());
@@ -627,8 +632,8 @@ impl HashPersistence for StreamingJsonHashPersistence {
         
         let mut buffer_guard = self.buffer.lock().await;
         
-        for (file_path, hash, metadata) in results {
-            buffer_guard.push((file_path.clone(), hash.clone(), metadata.clone()));
+        for (file_path, hash, algorithm, hash_bits, metadata) in results {
+            buffer_guard.push((file_path.clone(), hash.clone(), algorithm.clone(), *hash_bits, metadata.clone()));
         }
         
         // バッファがいっぱいになったらフラッシュ

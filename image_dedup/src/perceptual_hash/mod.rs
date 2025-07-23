@@ -52,6 +52,15 @@ impl HashResult {
             .collect::<Vec<_>>()
             .join("")
     }
+    
+    /// ハッシュをu64として取得（ハミング距離計算用）
+    pub fn to_u64(&self) -> u64 {
+        let mut result = 0u64;
+        for (i, &byte) in self.hash_data.iter().take(8).enumerate() {
+            result |= (byte as u64) << (8 * (7 - i));
+        }
+        result
+    }
 }
 
 impl fmt::Display for HashResult {

@@ -27,8 +27,8 @@ where
         
         while let Some(result) = result_rx.recv().await {
             match result {
-                ProcessingResult::Success { file_path, hash, metadata } => {
-                    batch.push((file_path, hash, metadata));
+                ProcessingResult::Success { file_path, hash, algorithm, hash_bits, metadata } => {
+                    batch.push((file_path, hash, algorithm, hash_bits, metadata));
                     completed += 1;
                     
                     // バッチ永続化
@@ -98,6 +98,8 @@ use crate::core::ProcessingMetadata;
             result_tx.send(ProcessingResult::Success {
                 file_path: format!("/test{i}.jpg"),
                 hash: format!("hash{i}"),
+                algorithm: "DCT".to_string(),
+                hash_bits: i as u64,
                 metadata,
             }).await.unwrap();
         }
@@ -147,12 +149,16 @@ use crate::core::ProcessingMetadata;
         result_tx.send(ProcessingResult::Success {
             file_path: "/success1.jpg".to_string(),
             hash: "hash1".to_string(),
+            algorithm: "DCT".to_string(),
+            hash_bits: 1u64,
             metadata: metadata.clone(),
         }).await.unwrap();
         
         result_tx.send(ProcessingResult::Success {
             file_path: "/success2.jpg".to_string(),
             hash: "hash2".to_string(),
+            algorithm: "DCT".to_string(),
+            hash_bits: 2u64,
             metadata,
         }).await.unwrap();
         
@@ -209,6 +215,8 @@ use crate::core::ProcessingMetadata;
             result_tx.send(ProcessingResult::Success {
                 file_path: format!("/test{i}.jpg"),
                 hash: format!("hash{i}"),
+                algorithm: "DCT".to_string(),
+                hash_bits: i as u64,
                 metadata,
             }).await.unwrap();
         }

@@ -38,13 +38,20 @@ where
             was_resized: load_result.was_resized,
         };
         
-        anyhow::Result::<(String, ProcessingMetadata)>::Ok((hash_result.to_hex(), metadata))
+        anyhow::Result::<(String, String, u64, ProcessingMetadata)>::Ok((
+            hash_result.to_hex(),
+            format!("{:?}", hash_result.algorithm),
+            hash_result.to_u64(),
+            metadata
+        ))
     }.await;
     
     match result {
-        Ok((hash, metadata)) => ProcessingResult::Success {
+        Ok((hash, algorithm, hash_bits, metadata)) => ProcessingResult::Success {
             file_path: file_path.to_string(),
             hash,
+            algorithm,
+            hash_bits,
             metadata,
         },
         Err(error) => ProcessingResult::Error {

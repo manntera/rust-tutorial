@@ -54,7 +54,7 @@ pub trait HashPersistence: Send + Sync {
     /// バッチでのハッシュ保存
     async fn store_batch(
         &self,
-        results: &[(String, String, ProcessingMetadata)],
+        results: &[(String, String, String, u64, ProcessingMetadata)],
     ) -> Result<()>;
     
     /// 永続化の完了処理

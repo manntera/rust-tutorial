@@ -25,6 +25,8 @@ pub enum ProcessingResult {
     Success {
         file_path: String,
         hash: String,
+        algorithm: String,
+        hash_bits: u64,
         metadata: ProcessingMetadata,
     },
     Error {
@@ -81,11 +83,13 @@ mod tests {
         let result = ProcessingResult::Success {
             file_path: "/test/image.jpg".to_string(),
             hash: "abcd1234".to_string(),
+            algorithm: "DCT".to_string(),
+            hash_bits: 0x12345678,
             metadata,
         };
         
         match result {
-            ProcessingResult::Success { file_path, hash, metadata } => {
+            ProcessingResult::Success { file_path, hash, algorithm, hash_bits, metadata } => {
                 assert_eq!(file_path, "/test/image.jpg");
                 assert_eq!(hash, "abcd1234");
                 assert_eq!(metadata.file_size, 2048);
