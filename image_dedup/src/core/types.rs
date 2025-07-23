@@ -1,4 +1,5 @@
 // 処理に関連するデータ型定義
+use std::path::PathBuf;
 
 /// 処理時のメタデータ
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -10,7 +11,7 @@ pub struct ProcessingMetadata {
 }
 
 /// 処理全体のサマリー
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct ProcessingSummary {
     pub total_files: usize,
     pub processed_files: usize,
@@ -23,14 +24,14 @@ pub struct ProcessingSummary {
 #[derive(Debug)]
 pub enum ProcessingOutcome {
     Success {
-        file_path: String,
+        file_path: PathBuf,
         hash: String,
         algorithm: String,
         hash_bits: u64,
         metadata: ProcessingMetadata,
     },
     Error {
-        file_path: String,
+        file_path: PathBuf,
         error: String,
     },
 }
@@ -81,7 +82,7 @@ mod tests {
         };
 
         let result = ProcessingOutcome::Success {
-            file_path: "/test/image.jpg".to_string(),
+            file_path: PathBuf::from("/test/image.jpg"),
             hash: "abcd1234".to_string(),
             algorithm: "DCT".to_string(),
             hash_bits: 0x12345678,
@@ -96,26 +97,30 @@ mod tests {
                 hash_bits: _,
                 metadata,
             } => {
-                assert_eq!(file_path, "/test/image.jpg");
+                assert_eq!(file_path, PathBuf::from("/test/image.jpg"));
                 assert_eq!(hash, "abcd1234");
                 assert_eq!(metadata.file_size, 2048);
                 assert!(metadata.was_resized);
             }
-            ProcessingOutcome::Error { .. } => panic!("Expected Success variant"),
+            ProcessingOutcome::Error { .. } => {
+                panic!("Expected Success variant");
+            }
         }
     }
 
     #[test]
     fn test_processing_result_error() {
         let result = ProcessingOutcome::Error {
-            file_path: "/test/invalid.jpg".to_string(),
+            file_path: PathBuf::from("/test/invalid.jpg"),
             error: "Failed to load image".to_string(),
         };
 
         match result {
-            ProcessingOutcome::Success { .. } => panic!("Expected Error variant"),
+            ProcessingOutcome::Success { .. } => {
+                panic!("Expected Error variant");
+            }
             ProcessingOutcome::Error { file_path, error } => {
-                assert_eq!(file_path, "/test/invalid.jpg");
+                assert_eq!(file_path, PathBuf::from("/test/invalid.jpg"));
                 assert_eq!(error, "Failed to load image");
             }
         }

@@ -2,11 +2,12 @@
 
 use crate::core::HashPersistence;
 use crate::core::ProcessingMetadata;
+use crate::ProcessingError;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncWriteExt, BufWriter};
@@ -14,7 +15,7 @@ use tokio::sync::Mutex as AsyncMutex;
 
 // Type aliases for complex types to improve readability and satisfy clippy
 type HashStorageMap = HashMap<String, (String, String, u64, ProcessingMetadata)>;
-type StreamingBuffer = Vec<(String, String, String, u64, ProcessingMetadata)>;
+type StreamingBuffer = Vec<(PathBuf, String, String, u64, ProcessingMetadata)>;
 
 /// メモリ内保存の永続化実装（テスト用および開発用）
 /// モックテストにも使用可能な完全機能実装
@@ -93,7 +94,7 @@ impl MemoryHashPersistence {
 impl HashPersistence for MemoryHashPersistence {
     async fn store_hash(
         &self,
-        file_path: &str,
+        file_path: &Path,
         hash: &str,
         metadata: &ProcessingMetadata,
     ) -> Result<()> {
@@ -101,7 +102,7 @@ impl HashPersistence for MemoryHashPersistence {
             .lock()
             .map_err(|e| anyhow::anyhow!("Storage lock poisoned: {}", e))?
             .insert(
-                file_path.to_owned(),
+                file_path.to_string_lossy().to_string(),
                 (hash.to_owned(), "DCT".to_owned(), 0u64, metadata.clone()),
             );
         Ok(())
@@ -109,14 +110,14 @@ impl HashPersistence for MemoryHashPersistence {
 
     async fn store_batch(
         &self,
-        results: &[(String, String, String, u64, ProcessingMetadata)],
+        results: &[(PathBuf, String, String, u64, ProcessingMetadata)],
     ) -> Result<()> {
         let mut storage = self.storage
             .lock()
             .map_err(|e| anyhow::anyhow!("Storage lock poisoned: {}", e))?;
         for (path, hash, algorithm, hash_bits, metadata) in results {
             storage.insert(
-                path.to_owned(),
+                path.to_string_lossy().to_string(),
                 (
                     hash.to_owned(),
                     algorithm.to_owned(),
@@ -216,12 +217,12 @@ impl JsonHashPersistence {
 impl HashPersistence for JsonHashPersistence {
     async fn store_hash(
         &self,
-        file_path: &str,
+        file_path: &Path,
         hash: &str,
         metadata: &ProcessingMetadata,
     ) -> Result<()> {
         self.store_batch(&[(
-            file_path.to_string(),
+            file_path.to_path_buf(),
             hash.to_string(),
             "DCT".to_string(),
             0u64,
@@ -232,7 +233,7 @@ impl HashPersistence for JsonHashPersistence {
 
     async fn store_batch(
         &self,
-        results: &[(String, String, String, u64, ProcessingMetadata)],
+        results: &[(PathBuf, String, String, u64, ProcessingMetadata)],
     ) -> Result<()> {
         if results.is_empty() {
             return Ok(());
@@ -243,7 +244,7 @@ impl HashPersistence for JsonHashPersistence {
         // エントリごとに個別にロックを取得
         for (file_path, hash, _algorithm, hash_bits, metadata) in results {
             let entry = HashEntry {
-                file_path: file_path.clone(),
+                file_path: file_path.to_string_lossy().to_string(),
                 hash: hash.clone(),
                 hash_bits: *hash_bits,
                 metadata: metadata.clone(),
@@ -370,7 +371,7 @@ mod tests {
 
         // 単一保存テスト
         persistence
-            .store_hash("/test1.jpg", "hash1", &metadata)
+            .store_hash(std::path::Path::new("/test1.jpg"), "hash1", &metadata)
             .await
             .unwrap();
 
@@ -382,14 +383,14 @@ mod tests {
         // バッチ保存テスト
         let batch = vec![
             (
-                "/test2.jpg".to_string(),
+                "/test2.jpg".into(),
                 "hash2".to_string(),
                 "DCT".to_string(),
                 0u64,
                 metadata.clone(),
             ),
             (
-                "/test3.jpg".to_string(),
+                "/test3.jpg".into(),
                 "hash3".to_string(),
                 "DCT".to_string(),
                 0u64,
@@ -418,7 +419,7 @@ mod tests {
         };
 
         persistence
-            .store_hash("/test.jpg", "hash", &metadata)
+            .store_hash(std::path::Path::new("/test.jpg"), "hash", &metadata)
             .await
             .unwrap();
         persistence.finalize().await.unwrap();
@@ -448,7 +449,7 @@ mod tests {
 
         // 単一エントリ保存
         persistence
-            .store_hash("/test.jpg", "abcd1234", &metadata)
+            .store_hash(std::path::Path::new("/test.jpg"), "abcd1234", &metadata)
             .await
             .unwrap();
 
@@ -487,21 +488,21 @@ mod tests {
         // バッチ保存
         let batch = vec![
             (
-                "/test1.jpg".to_string(),
+                "/test1.jpg".into(),
                 "hash1".to_string(),
                 "DCT".to_string(),
                 0u64,
                 metadata.clone(),
             ),
             (
-                "/test2.png".to_string(),
+                "/test2.png".into(),
                 "hash2".to_string(),
                 "DCT".to_string(),
                 0u64,
                 metadata.clone(),
             ),
             (
-                "/test3.gif".to_string(),
+                "/test3.gif".into(),
                 "hash3".to_string(),
                 "DCT".to_string(),
                 0u64,
@@ -546,14 +547,14 @@ mod tests {
         // 複数バッチ保存
         let batch1 = vec![
             (
-                "/batch1_1.jpg".to_string(),
+                "/batch1_1.jpg".into(),
                 "hash1_1".to_string(),
                 "DCT".to_string(),
                 0u64,
                 metadata.clone(),
             ),
             (
-                "/batch1_2.jpg".to_string(),
+                "/batch1_2.jpg".into(),
                 "hash1_2".to_string(),
                 "DCT".to_string(),
                 0u64,
@@ -563,21 +564,21 @@ mod tests {
 
         let batch2 = vec![
             (
-                "/batch2_1.jpg".to_string(),
+                "/batch2_1.jpg".into(),
                 "hash2_1".to_string(),
                 "DCT".to_string(),
                 0u64,
                 metadata.clone(),
             ),
             (
-                "/batch2_2.jpg".to_string(),
+                "/batch2_2.jpg".into(),
                 "hash2_2".to_string(),
                 "DCT".to_string(),
                 0u64,
                 metadata.clone(),
             ),
             (
-                "/batch2_3.jpg".to_string(),
+                "/batch2_3.jpg".into(),
                 "hash2_3".to_string(),
                 "DCT".to_string(),
                 0u64,
@@ -643,7 +644,7 @@ mod tests {
         };
 
         persistence
-            .store_hash("/test.jpg", "hash", &metadata)
+            .store_hash(std::path::Path::new("/test.jpg"), "hash", &metadata)
             .await
             .unwrap();
         persistence.finalize().await.unwrap();
@@ -834,7 +835,7 @@ impl StreamingJsonHashPersistence {
 
         for (file_path, hash, _algorithm, hash_bits, metadata) in buffer_guard.drain(..) {
             let entry = HashEntry {
-                file_path,
+                file_path: file_path.to_string_lossy().to_string(),
                 hash,
                 hash_bits,
                 metadata,
@@ -886,12 +887,12 @@ impl StreamingJsonHashPersistence {
 impl HashPersistence for StreamingJsonHashPersistence {
     async fn store_hash(
         &self,
-        file_path: &str,
+        file_path: &Path,
         hash: &str,
         metadata: &ProcessingMetadata,
     ) -> Result<()> {
         self.store_batch(&[(
-            file_path.to_string(),
+            file_path.to_path_buf(),
             hash.to_string(),
             "DCT".to_string(),
             0u64,
@@ -902,7 +903,7 @@ impl HashPersistence for StreamingJsonHashPersistence {
 
     async fn store_batch(
         &self,
-        results: &[(String, String, String, u64, ProcessingMetadata)],
+        results: &[(PathBuf, String, String, u64, ProcessingMetadata)],
     ) -> Result<()> {
         if results.is_empty() {
             return Ok(());
@@ -959,10 +960,11 @@ impl HashPersistence for StreamingJsonHashPersistence {
             self.update_json_total_files(entries_written).await?;
         } else {
             // ファイルが存在しない場合（何も保存されていない）
-            if !tokio::fs::try_exists(&self.file_path)
+            let file_exists = tokio::fs::try_exists(&self.file_path)
                 .await
-                .unwrap_or(false)
-            {
+                .map_err(|e| ProcessingError::persistence(e.into()))?;
+            
+            if !file_exists {
                 drop(writer_guard);
 
                 self.initialize_file().await?;
@@ -1046,15 +1048,15 @@ mod streaming_tests {
 
         // 複数のエントリを追加（バッファサイズを超える）
         persistence
-            .store_hash("/test1.jpg", "hash1", &metadata)
+            .store_hash(std::path::Path::new("/test1.jpg"), "hash1", &metadata)
             .await
             .unwrap();
         persistence
-            .store_hash("/test2.png", "hash2", &metadata)
+            .store_hash(std::path::Path::new("/test2.png"), "hash2", &metadata)
             .await
             .unwrap();
         persistence
-            .store_hash("/test3.gif", "hash3", &metadata)
+            .store_hash(std::path::Path::new("/test3.gif"), "hash3", &metadata)
             .await
             .unwrap();
 
@@ -1121,7 +1123,7 @@ mod streaming_tests {
         let batch: Vec<_> = (0..10)
             .map(|i| {
                 (
-                    format!("/batch{i:02}.jpg"),
+                    format!("/batch{i:02}.jpg").into(),
                     format!("batchhash{i:02}"),
                     "algorithm".to_string(),
                     0u64,

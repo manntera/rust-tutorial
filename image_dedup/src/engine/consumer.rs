@@ -263,8 +263,8 @@ mod tests {
         let processed_files: HashSet<String> = results
             .iter()
             .map(|r| match r {
-                ProcessingOutcome::Success { file_path, .. } => file_path.clone(),
-                ProcessingOutcome::Error { file_path, .. } => file_path.clone(),
+                ProcessingOutcome::Success { file_path, .. } => file_path.to_string_lossy().to_string(),
+                ProcessingOutcome::Error { file_path, .. } => file_path.to_string_lossy().to_string(),
             })
             .collect();
 

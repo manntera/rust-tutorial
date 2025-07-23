@@ -172,14 +172,14 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn create_test_duplicate_report(groups: Vec<DuplicateGroup>) -> String {
+    fn create_test_duplicate_report(groups: Vec<DuplicateGroup>) -> Result<String, serde_json::Error> {
         let report = DuplicatesReport {
             total_groups: groups.len(),
             total_duplicates: groups.iter().map(|g| g.files.len().saturating_sub(1)).sum(),
             threshold: 5,
             groups,
         };
-        serde_json::to_string_pretty(&report).expect("Failed to serialize test report")
+        serde_json::to_string_pretty(&report)
     }
 
     #[tokio::test]
@@ -199,7 +199,7 @@ mod tests {
         let dest = temp_dir.path().join("moved");
 
         // Create empty duplicates report
-        let empty_report = create_test_duplicate_report(vec![]);
+        let empty_report = create_test_duplicate_report(vec![]).unwrap();
         fs::write(&dup_list, empty_report).unwrap();
 
         let result = execute_process(dup_list, ProcessAction::Move, dest, true).await;
@@ -235,7 +235,7 @@ mod tests {
             ],
         };
 
-        let report_json = create_test_duplicate_report(vec![group]);
+        let report_json = create_test_duplicate_report(vec![group]).unwrap();
         fs::write(&dup_list, report_json).unwrap();
 
         let result = execute_process(dup_list, ProcessAction::Move, dest.clone(), true).await;
@@ -277,7 +277,7 @@ mod tests {
             ],
         };
 
-        let report_json = create_test_duplicate_report(vec![group]);
+        let report_json = create_test_duplicate_report(vec![group]).unwrap();
         fs::write(&dup_list, report_json).unwrap();
 
         let result = execute_process(dup_list, ProcessAction::Delete, PathBuf::new(), true).await;
@@ -344,7 +344,7 @@ mod tests {
             },
         ];
 
-        let report_json = create_test_duplicate_report(groups);
+        let report_json = create_test_duplicate_report(groups).unwrap();
         fs::write(&dup_list, report_json).unwrap();
 
         let result = execute_process(dup_list, ProcessAction::Move, dest.clone(), true).await;
@@ -393,7 +393,7 @@ mod tests {
             ],
         };
 
-        let report_json = create_test_duplicate_report(vec![group]);
+        let report_json = create_test_duplicate_report(vec![group]).unwrap();
         fs::write(&dup_list, report_json).unwrap();
 
         let result = execute_process(dup_list, ProcessAction::Move, dest, true).await;

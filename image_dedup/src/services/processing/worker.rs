@@ -3,7 +3,7 @@
 use crate::core::types::{ProcessingMetadata, ProcessingOutcome};
 use crate::image_loader::ImageLoaderBackend;
 use crate::perceptual_hash::PerceptualHashBackend;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 /// 単一ファイルの処理
@@ -49,14 +49,14 @@ where
 
     match result {
         Ok((hash, algorithm, hash_bits, metadata)) => ProcessingOutcome::Success {
-            file_path: file_path.to_string(),
+            file_path: PathBuf::from(file_path),
             hash,
             algorithm,
             hash_bits,
             metadata,
         },
         Err(error) => ProcessingOutcome::Error {
-            file_path: file_path.to_string(),
+            file_path: PathBuf::from(file_path),
             error: error.to_string(),
         },
     }

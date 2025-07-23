@@ -106,7 +106,7 @@ mod tests {
 
             result_tx
                 .send(ProcessingOutcome::Success {
-                    file_path: format!("/test{i}.jpg"),
+                    file_path: format!("/test{i}.jpg").into(),
                     hash: format!("hash{i}"),
                     algorithm: "DCT".to_string(),
                     hash_bits: i as u64,
@@ -160,7 +160,7 @@ mod tests {
 
         result_tx
             .send(ProcessingOutcome::Success {
-                file_path: "/success1.jpg".to_string(),
+                file_path: "/success1.jpg".into(),
                 hash: "hash1".to_string(),
                 algorithm: "DCT".to_string(),
                 hash_bits: 1u64,
@@ -171,7 +171,7 @@ mod tests {
 
         result_tx
             .send(ProcessingOutcome::Success {
-                file_path: "/success2.jpg".to_string(),
+                file_path: "/success2.jpg".into(),
                 hash: "hash2".to_string(),
                 algorithm: "DCT".to_string(),
                 hash_bits: 2u64,
@@ -183,7 +183,7 @@ mod tests {
         // エラー結果
         result_tx
             .send(ProcessingOutcome::Error {
-                file_path: "/error1.jpg".to_string(),
+                file_path: "/error1.jpg".into(),
                 error: "load failed".to_string(),
             })
             .await
@@ -191,7 +191,7 @@ mod tests {
 
         result_tx
             .send(ProcessingOutcome::Error {
-                file_path: "/error2.jpg".to_string(),
+                file_path: "/error2.jpg".into(),
                 error: "invalid format".to_string(),
             })
             .await
@@ -238,7 +238,7 @@ mod tests {
 
             result_tx
                 .send(ProcessingOutcome::Success {
-                    file_path: format!("/test{i}.jpg"),
+                    file_path: format!("/test{i}.jpg").into(),
                     hash: format!("hash{i}"),
                     algorithm: "DCT".to_string(),
                     hash_bits: i as u64,

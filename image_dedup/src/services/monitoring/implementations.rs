@@ -2,6 +2,7 @@
 
 use crate::core::ProgressReporter;
 use async_trait::async_trait;
+use std::path::Path;
 
 /// コンソール出力による進捗報告実装
 #[derive(Debug, Default, Clone)]
@@ -34,9 +35,9 @@ impl ProgressReporter for ConsoleProgressReporter {
         }
     }
 
-    async fn report_error(&self, file_path: &str, error: &str) {
+    async fn report_error(&self, file_path: &Path, error: &str) {
         if !self.quiet {
-            eprintln!("❌ Error processing {file_path}: {error}");
+            eprintln!("❌ Error processing {}: {error}", file_path.display());
         }
     }
 
@@ -67,7 +68,7 @@ impl ProgressReporter for NoOpProgressReporter {
         // 何もしない
     }
 
-    async fn report_error(&self, _file_path: &str, _error: &str) {
+    async fn report_error(&self, _file_path: &Path, _error: &str) {
         // 何もしない
     }
 
@@ -87,7 +88,7 @@ mod tests {
 
         reporter.report_started(100).await;
         reporter.report_progress(50, 100).await;
-        reporter.report_error("/test.jpg", "test error").await;
+        reporter.report_error(std::path::Path::new("/test.jpg"), "test error").await;
         reporter.report_completed(99, 1).await;
 
         // 基本的な呼び出しが成功することを確認
@@ -109,7 +110,7 @@ mod tests {
         // 全てのメソッドを呼び出してもパニックしない
         reporter.report_started(100).await;
         reporter.report_progress(50, 100).await;
-        reporter.report_error("/test.jpg", "test error").await;
+        reporter.report_error(std::path::Path::new("/test.jpg"), "test error").await;
         reporter.report_completed(99, 1).await;
 
         // 基本的な呼び出しが成功することを確認

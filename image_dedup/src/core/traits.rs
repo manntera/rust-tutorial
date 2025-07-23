@@ -5,6 +5,7 @@ use super::types::{ProcessingMetadata, ProcessingSummary};
 use anyhow::Result;
 use async_trait::async_trait;
 use mockall::automock;
+use std::path::{Path, PathBuf};
 
 /// 並列処理の設定を抽象化するトレイト
 #[automock]
@@ -33,7 +34,7 @@ pub trait ProgressReporter: Send + Sync {
     async fn report_progress(&self, completed: usize, total: usize);
 
     /// エラー発生時の報告
-    async fn report_error(&self, file_path: &str, error: &str);
+    async fn report_error(&self, file_path: &Path, error: &str);
 
     /// 処理完了時の報告
     async fn report_completed(&self, total_processed: usize, total_errors: usize);
@@ -46,7 +47,7 @@ pub trait HashPersistence: Send + Sync {
     /// 単一ハッシュの保存
     async fn store_hash(
         &self,
-        file_path: &str,
+        file_path: &Path,
         hash: &str,
         metadata: &ProcessingMetadata,
     ) -> Result<()>;
@@ -54,7 +55,7 @@ pub trait HashPersistence: Send + Sync {
     /// バッチでのハッシュ保存
     async fn store_batch(
         &self,
-        results: &[(String, String, String, u64, ProcessingMetadata)],
+        results: &[(PathBuf, String, String, u64, ProcessingMetadata)],
     ) -> Result<()>;
 
     /// 永続化の完了処理

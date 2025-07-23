@@ -183,7 +183,9 @@ mod tests {
             panic!("テスト用のパニック");
         });
 
-        let join_error = task.await.unwrap_err();
+        let join_result = task.await;
+        assert!(join_result.is_err(), "タスクは失敗するべきです");
+        let join_error = join_result.expect_err("タスクエラーが期待されます");
         let processing_error = ProcessingError::task(join_error);
 
         assert!(processing_error.to_string().contains("タスクエラー"));

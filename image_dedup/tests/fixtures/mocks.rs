@@ -68,7 +68,7 @@ mod tests {
         
         mock_reporter
             .expect_report_error()
-            .with(eq("/path/test.jpg"), eq("load failed"))
+            .with(eq(std::path::Path::new("/path/test.jpg")), eq("load failed"))
             .times(1)
             .returning(|_, _| ());
         
@@ -80,7 +80,7 @@ mod tests {
         
         mock_reporter.report_started(100).await;
         mock_reporter.report_progress(50, 100).await;
-        mock_reporter.report_error("/path/test.jpg", "load failed").await;
+        mock_reporter.report_error(std::path::Path::new("/path/test.jpg"), "load failed").await;
         mock_reporter.report_completed(99, 1).await;
     }
 
@@ -109,13 +109,13 @@ mod tests {
         
         mock_persistence
             .expect_store_hash()
-            .with(eq("/test1.jpg"), eq("hash1"), eq(metadata.clone()))
+            .with(eq(std::path::Path::new("/test1.jpg")), eq("hash1"), eq(metadata.clone()))
             .times(1)
             .returning(|_, _, _| Ok(()));
         
         let batch = vec![
-            ("/test2.jpg".to_string(), "hash2".to_string(), metadata.clone()),
-            ("/test3.jpg".to_string(), "hash3".to_string(), metadata.clone()),
+            ("/test2.jpg".into(), "hash2".to_string(), "DCT".to_string(), 0u64, metadata.clone()),
+            ("/test3.jpg".into(), "hash3".to_string(), "DCT".to_string(), 0u64, metadata.clone()),
         ];
         
         mock_persistence
@@ -130,7 +130,7 @@ mod tests {
             .returning(|| Ok(()));
         
         // Execute test
-        mock_persistence.store_hash("/test1.jpg", "hash1", &metadata).await.unwrap();
+        mock_persistence.store_hash(std::path::Path::new("/test1.jpg"), "hash1", &metadata).await.unwrap();
         mock_persistence.store_batch(&batch).await.unwrap();
         mock_persistence.finalize().await.unwrap();
     }
