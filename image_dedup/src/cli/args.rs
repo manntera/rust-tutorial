@@ -57,6 +57,17 @@ pub enum Commands {
         threshold: u32,
     },
 
+    /// Filter duplicate groups by minimum hash distance
+    FilterDuplicates {
+        /// Duplicate list file from find-dups command
+        #[arg(default_value = "duplicates.json")]
+        input_json: PathBuf,
+
+        /// Minimum hash distance to display
+        #[arg(short, long, default_value = "3")]
+        min_distance: u32,
+    },
+
     /// Process duplicate images (move or delete)
     Process {
         /// Duplicate list file

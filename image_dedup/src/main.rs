@@ -35,6 +35,12 @@ async fn main() -> Result<()> {
         } => {
             commands::execute_find_dups(hash_database, output, threshold).await?;
         }
+        Commands::FilterDuplicates {
+            input_json,
+            min_distance,
+        } => {
+            commands::execute_filter_duplicates(input_json, min_distance).await?;
+        }
         Commands::Process {
             duplicate_list,
             action,

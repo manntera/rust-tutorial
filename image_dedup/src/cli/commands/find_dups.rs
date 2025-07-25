@@ -169,11 +169,25 @@ pub async fn execute_find_dups(
             // Find the index of the original (largest file)
             let original_index = 0; // After sorting, the first file is the largest
             
-            // Mark the original file and rebuild the files vector
+            // Get the hash of the new original file (largest file)
+            let original_hash = hash_entries.iter()
+                .find(|e| e.file_path == files_with_sizes[0].0.path)
+                .map(|e| e.hash_bits)
+                .unwrap_or(0);
+            
+            // Mark the original file and recalculate distances from the new original
             let sorted_files: Vec<DuplicateFile> = files_with_sizes.into_iter()
                 .enumerate()
                 .map(|(idx, (mut file, _))| {
                     file.is_original = idx == original_index;
+                    
+                    // Recalculate distance from the new original (largest file)
+                    let file_hash = hash_entries.iter()
+                        .find(|e| e.file_path == file.path)
+                        .map(|e| e.hash_bits)
+                        .unwrap_or(0);
+                    file.distance_from_first = hamming_distance(original_hash, file_hash);
+                    
                     file
                 })
                 .collect();
