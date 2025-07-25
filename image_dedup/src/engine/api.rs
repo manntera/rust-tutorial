@@ -1,21 +1,26 @@
 // 高レベル公開API
 // ProcessingPipelineを簡単に使用できるようにするための便利な関数
 
+use super::ProcessingEngine;
 use crate::{
+    core::{
+        HashPersistence, ProcessingConfig, ProcessingResult, ProcessingSummary, ProgressReporter,
+    },
     image_loader::ImageLoaderBackend,
     perceptual_hash::PerceptualHashBackend,
+    services::{
+        ConsoleProgressReporter, DefaultProcessingConfig, MemoryHashPersistence,
+        NoOpProgressReporter,
+    },
     storage::StorageBackend,
-    core::{ProcessingConfig, ProgressReporter, HashPersistence, ProcessingSummary, error::ProcessingResult},
-    services::{DefaultProcessingConfig, ConsoleProgressReporter, MemoryHashPersistence, NoOpProgressReporter},
 };
-use super::ProcessingEngine;
 
 // ========================================
 // DI対応API - ProcessingEngineベース
 // ========================================
 
 /// 設定済みProcessingEngineでディレクトリを処理（DI推奨）
-/// 
+///
 /// 全ての依存関係が事前注入されたエンジンを使用する真のDI API
 pub async fn process_directory_with_engine<L, H, S, C, R, P>(
     directory: &str,
@@ -33,7 +38,7 @@ where
 }
 
 /// 設定済みProcessingEngineでファイルリストを処理（DI推奨）
-/// 
+///
 /// ファイル発見を済ませた場合に使用する細かい制御用API
 pub async fn process_files_with_engine<L, H, S, C, R, P>(
     files: Vec<String>,
@@ -51,14 +56,21 @@ where
 }
 
 /// ProcessingEngine作成のヘルパー関数
-/// 
+///
 /// デフォルト設定での簡単なエンジン作成
 pub fn create_default_processing_engine<L, H, S>(
     loader: L,
     hasher: H,
     storage: S,
     cpu_count: usize,
-) -> ProcessingEngine<L, H, S, DefaultProcessingConfig, ConsoleProgressReporter, MemoryHashPersistence>
+) -> ProcessingEngine<
+    L,
+    H,
+    S,
+    DefaultProcessingConfig,
+    ConsoleProgressReporter,
+    MemoryHashPersistence,
+>
 where
     L: ImageLoaderBackend + 'static,
     H: PerceptualHashBackend + 'static,
@@ -75,7 +87,7 @@ where
 }
 
 /// ProcessingEngine作成のヘルパー関数（静音版）
-/// 
+///
 /// テストやバックグラウンド処理用の静音エンジン作成
 pub fn create_quiet_processing_engine<L, H, S>(
     loader: L,
@@ -98,22 +110,19 @@ where
     )
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        image_loader::standard::StandardImageLoader,
-        perceptual_hash::dct_hash::DCTHasher,
+        image_loader::standard::StandardImageLoader, perceptual_hash::dct_hash::DctHasher,
         storage::local::LocalStorageBackend,
     };
     // Local test utility
     const MINIMAL_PNG_DATA: &[u8] = &[
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
-        0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-        0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
-        0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-        0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
         0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
     ];
 
@@ -123,9 +132,8 @@ mod tests {
         std::fs::write(&png_file, MINIMAL_PNG_DATA).expect("Failed to write PNG file");
         (temp_dir, png_file)
     }
-    use tempfile::TempDir;
     use std::fs;
-
+    use tempfile::TempDir;
 
     // ========================================
     // 新しいDI対応APIのテスト
@@ -142,19 +150,21 @@ mod tests {
 
         let engine = create_quiet_processing_engine(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             1,
         );
 
-        let result = process_directory_with_engine(temp_path, &engine).await.unwrap();
+        let result = process_directory_with_engine(temp_path, &engine)
+            .await
+            .unwrap();
 
         assert_eq!(result.total_files, 1);
         assert_eq!(result.processed_files, 1);
         assert_eq!(result.error_count, 0);
 
         // 結果がエンジンの永続化に保存されていることを確認
-        assert_eq!(engine.persistence().stored_count(), 1);
+        assert_eq!(engine.persistence().stored_count().unwrap(), 1);
     }
 
     #[tokio::test]
@@ -164,7 +174,7 @@ mod tests {
 
         let engine = create_quiet_processing_engine(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             1,
         );
@@ -174,14 +184,14 @@ mod tests {
         assert_eq!(result.total_files, 1);
         assert_eq!(result.processed_files, 1);
         assert_eq!(result.error_count, 0);
-        assert_eq!(engine.persistence().stored_count(), 1);
+        assert_eq!(engine.persistence().stored_count().unwrap(), 1);
     }
 
     #[test]
     fn test_create_default_processing_engine() {
         let engine = create_default_processing_engine(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             4,
         );
@@ -194,7 +204,7 @@ mod tests {
     fn test_create_quiet_processing_engine() {
         let engine = create_quiet_processing_engine(
             StandardImageLoader::new(),
-            DCTHasher::new(8),
+            DctHasher::new(8),
             LocalStorageBackend::new(),
             4,
         );

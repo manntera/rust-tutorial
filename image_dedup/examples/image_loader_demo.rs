@@ -1,5 +1,5 @@
 use anyhow::Result;
-use image_dedup::image_loader::{ImageLoaderBackend, LoadResult, standard::StandardImageLoader};
+use image_dedup::image_loader::{standard::StandardImageLoader, ImageLoaderBackend, LoadResult};
 use std::path::Path;
 
 #[tokio::main]
@@ -34,7 +34,9 @@ async fn main() -> Result<()> {
     performance_comparison().await?;
 
     // テストファイルのクリーンアップ
-    std::fs::remove_dir_all("./test_images_demo").ok();
+    if let Err(e) = std::fs::remove_dir_all("./test_images_demo") {
+        eprintln!("Warning: Failed to clean up test directory: {e}");
+    }
 
     Ok(())
 }
@@ -135,18 +137,18 @@ async fn create_test_images() -> Result<()> {
 
     // 小さな画像 (100x100)
     let small_img: RgbImage = ImageBuffer::from_fn(100, 100, |x, y| {
-        let r = (x * 255 / 100) as u8;
-        let g = (y * 255 / 100) as u8;
-        let b = ((x + y) * 255 / 200) as u8;
+        let r = ((x * 255 / 100).min(255)) as u8;
+        let g = ((y * 255 / 100).min(255)) as u8;
+        let b = (((x + y) * 255 / 200).min(255)) as u8;
         image::Rgb([r, g, b])
     });
     small_img.save("./test_images_demo/small_100x100.png")?;
 
     // 中サイズ画像 (800x600)
     let medium_img: RgbImage = ImageBuffer::from_fn(800, 600, |x, y| {
-        let r = ((x * y) % 256) as u8;
-        let g = (x % 256) as u8;
-        let b = (y % 256) as u8;
+        let r = u8::try_from((x * y) % 256).unwrap_or(0);
+        let g = u8::try_from(x % 256).unwrap_or(0);
+        let b = u8::try_from(y % 256).unwrap_or(0);
         image::Rgb([r, g, b])
     });
     medium_img.save("./test_images_demo/medium_800x600.png")?;
@@ -154,7 +156,7 @@ async fn create_test_images() -> Result<()> {
     // 大きな画像 (2000x1500)
     let large_img: RgbImage = ImageBuffer::from_fn(2000, 1500, |x, y| {
         let pattern = (x / 50) + (y / 50);
-        let intensity = ((pattern * 30) % 256) as u8;
+        let intensity = u8::try_from((pattern * 30) % 256).unwrap_or(0);
         image::Rgb([intensity, intensity / 2, intensity / 3])
     });
     large_img.save("./test_images_demo/large_2000x1500.png")?;

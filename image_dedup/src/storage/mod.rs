@@ -80,16 +80,19 @@ mod tests {
 
         // Test valid image extensions
         let valid_extensions = vec!["jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp"];
-        
+
         for ext in valid_extensions {
             let item = StorageItem {
-                id: format!("file.{}", ext),
-                name: format!("file.{}", ext),
+                id: format!("file.{ext}"),
+                name: format!("file.{ext}"),
                 size: 1000,
                 is_directory: false,
                 extension: Some(ext.to_string()),
             };
-            assert!(backend.is_image_file(&item), "Extension {} should be recognized as image", ext);
+            assert!(
+                backend.is_image_file(&item),
+                "Extension {ext} should be recognized as image"
+            );
         }
     }
 
@@ -98,16 +101,19 @@ mod tests {
         let backend = crate::storage::local::LocalStorageBackend::new();
 
         let extensions = vec!["JPG", "JPEG", "PNG", "GIF", "Jpg", "pNg"];
-        
+
         for ext in extensions {
             let item = StorageItem {
-                id: format!("file.{}", ext),
-                name: format!("file.{}", ext),
+                id: format!("file.{ext}"),
+                name: format!("file.{ext}"),
                 size: 1000,
                 is_directory: false,
                 extension: Some(ext.to_string()),
             };
-            assert!(backend.is_image_file(&item), "Extension {} should be recognized as image", ext);
+            assert!(
+                backend.is_image_file(&item),
+                "Extension {ext} should be recognized as image"
+            );
         }
     }
 
@@ -116,16 +122,19 @@ mod tests {
         let backend = crate::storage::local::LocalStorageBackend::new();
 
         let invalid_extensions = vec!["txt", "pdf", "doc", "mp4", "mp3", "exe"];
-        
+
         for ext in invalid_extensions {
             let item = StorageItem {
-                id: format!("file.{}", ext),
-                name: format!("file.{}", ext),
+                id: format!("file.{ext}"),
+                name: format!("file.{ext}"),
                 size: 1000,
                 is_directory: false,
                 extension: Some(ext.to_string()),
             };
-            assert!(!backend.is_image_file(&item), "Extension {} should not be recognized as image", ext);
+            assert!(
+                !backend.is_image_file(&item),
+                "Extension {ext} should not be recognized as image"
+            );
         }
     }
 
@@ -140,7 +149,7 @@ mod tests {
             is_directory: false,
             extension: None,
         };
-        
+
         assert!(!backend.is_image_file(&item));
     }
 
@@ -155,7 +164,7 @@ mod tests {
             is_directory: true,
             extension: Some("jpg".to_string()),
         };
-        
+
         // Directories should not be considered image files even with image extensions
         assert!(!backend.is_image_file(&item));
     }
@@ -170,7 +179,7 @@ mod tests {
             extension: Some("jpg".to_string()),
         };
 
-        let debug_str = format!("{:?}", item);
+        let debug_str = format!("{item:?}");
         assert!(debug_str.contains("test.jpg"));
         assert!(debug_str.contains("5000"));
     }

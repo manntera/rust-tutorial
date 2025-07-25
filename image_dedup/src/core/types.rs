@@ -1,4 +1,5 @@
 // 処理に関連するデータ型定義
+use std::path::PathBuf;
 
 /// 処理時のメタデータ
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -10,7 +11,7 @@ pub struct ProcessingMetadata {
 }
 
 /// 処理全体のサマリー
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct ProcessingSummary {
     pub total_files: usize,
     pub processed_files: usize,
@@ -21,16 +22,16 @@ pub struct ProcessingSummary {
 
 /// 個別処理の結果
 #[derive(Debug)]
-pub enum ProcessingResult {
+pub enum ProcessingOutcome {
     Success {
-        file_path: String,
+        file_path: PathBuf,
         hash: String,
         algorithm: String,
         hash_bits: u64,
         metadata: ProcessingMetadata,
     },
     Error {
-        file_path: String,
+        file_path: PathBuf,
         error: String,
     },
 }
@@ -47,7 +48,7 @@ mod tests {
             image_dimensions: (512, 512),
             was_resized: false,
         };
-        
+
         assert_eq!(metadata.file_size, 1024);
         assert_eq!(metadata.processing_time_ms, 150);
         assert_eq!(metadata.image_dimensions, (512, 512));
@@ -63,7 +64,7 @@ mod tests {
             total_processing_time_ms: 30000,
             average_time_per_file_ms: 315.79,
         };
-        
+
         assert_eq!(summary.total_files, 100);
         assert_eq!(summary.processed_files, 95);
         assert_eq!(summary.error_count, 5);
@@ -79,37 +80,47 @@ mod tests {
             image_dimensions: (1024, 1024),
             was_resized: true,
         };
-        
-        let result = ProcessingResult::Success {
-            file_path: "/test/image.jpg".to_string(),
+
+        let result = ProcessingOutcome::Success {
+            file_path: PathBuf::from("/test/image.jpg"),
             hash: "abcd1234".to_string(),
             algorithm: "DCT".to_string(),
             hash_bits: 0x12345678,
             metadata,
         };
-        
+
         match result {
-            ProcessingResult::Success { file_path, hash, algorithm, hash_bits, metadata } => {
-                assert_eq!(file_path, "/test/image.jpg");
+            ProcessingOutcome::Success {
+                file_path,
+                hash,
+                algorithm: _,
+                hash_bits: _,
+                metadata,
+            } => {
+                assert_eq!(file_path, PathBuf::from("/test/image.jpg"));
                 assert_eq!(hash, "abcd1234");
                 assert_eq!(metadata.file_size, 2048);
                 assert!(metadata.was_resized);
             }
-            ProcessingResult::Error { .. } => panic!("Expected Success variant"),
+            ProcessingOutcome::Error { .. } => {
+                unreachable!("Expected Success variant, got Error");
+            }
         }
     }
 
     #[test]
     fn test_processing_result_error() {
-        let result = ProcessingResult::Error {
-            file_path: "/test/invalid.jpg".to_string(),
+        let result = ProcessingOutcome::Error {
+            file_path: PathBuf::from("/test/invalid.jpg"),
             error: "Failed to load image".to_string(),
         };
-        
+
         match result {
-            ProcessingResult::Success { .. } => panic!("Expected Error variant"),
-            ProcessingResult::Error { file_path, error } => {
-                assert_eq!(file_path, "/test/invalid.jpg");
+            ProcessingOutcome::Success { .. } => {
+                unreachable!("Expected Error variant, got Success");
+            }
+            ProcessingOutcome::Error { file_path, error } => {
+                assert_eq!(file_path, PathBuf::from("/test/invalid.jpg"));
                 assert_eq!(error, "Failed to load image");
             }
         }
@@ -123,7 +134,7 @@ mod tests {
             image_dimensions: (512, 512),
             was_resized: false,
         };
-        
+
         let debug_str = format!("{metadata:?}");
         assert!(debug_str.contains("file_size: 1024"));
         assert!(debug_str.contains("processing_time_ms: 150"));

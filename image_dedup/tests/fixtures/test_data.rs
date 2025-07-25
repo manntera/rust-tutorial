@@ -2,6 +2,8 @@
 /// 
 /// This module provides shared test data to avoid duplication across multiple test files.
 
+use anyhow::Result;
+
 #[cfg(test)]
 use tempfile;
 
@@ -30,15 +32,15 @@ pub const SMALL_PNG: &[u8] = MINIMAL_PNG_DATA;
 /// # Example
 /// ```
 /// use std::fs;
-/// let (temp_dir, png_file) = create_test_png_file("test.png");
+/// let (temp_dir, png_file) = create_test_png_file("test.png")?;
 /// assert!(png_file.exists());
 /// ```
 #[cfg(test)]
-pub fn create_test_png_file(filename: &str) -> (tempfile::TempDir, std::path::PathBuf) {
-    let temp_dir = tempfile::TempDir::new().expect("Failed to create temp directory");
+pub fn create_test_png_file(filename: &str) -> Result<(tempfile::TempDir, std::path::PathBuf)> {
+    let temp_dir = tempfile::TempDir::new()?;
     let png_file = temp_dir.path().join(filename);
-    std::fs::write(&png_file, MINIMAL_PNG_DATA).expect("Failed to write PNG file");
-    (temp_dir, png_file)
+    std::fs::write(&png_file, MINIMAL_PNG_DATA)?;
+    Ok((temp_dir, png_file))
 }
 
 /// Creates multiple test PNG files in a temporary directory
@@ -48,22 +50,22 @@ pub fn create_test_png_file(filename: &str) -> (tempfile::TempDir, std::path::Pa
 /// 
 /// # Example
 /// ```
-/// let (temp_dir, png_files) = create_multiple_test_png_files(3);
+/// let (temp_dir, png_files) = create_multiple_test_png_files(3)?;
 /// assert_eq!(png_files.len(), 3);
 /// ```
 #[cfg(test)]
-pub fn create_multiple_test_png_files(count: usize) -> (tempfile::TempDir, Vec<std::path::PathBuf>) {
-    let temp_dir = tempfile::TempDir::new().expect("Failed to create temp directory");
+pub fn create_multiple_test_png_files(count: usize) -> Result<(tempfile::TempDir, Vec<std::path::PathBuf>)> {
+    let temp_dir = tempfile::TempDir::new()?;
     let mut png_files = Vec::new();
     
     for i in 0..count {
         let filename = format!("test{}.png", i);
         let png_file = temp_dir.path().join(&filename);
-        std::fs::write(&png_file, MINIMAL_PNG_DATA).expect("Failed to write PNG file");
+        std::fs::write(&png_file, MINIMAL_PNG_DATA)?;
         png_files.push(png_file);
     }
     
-    (temp_dir, png_files)
+    Ok((temp_dir, png_files))
 }
 
 #[cfg(test)]
@@ -71,23 +73,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_minimal_png_data_size() {
+    fn test_minimal_png_data_size() -> Result<()> {
         assert_eq!(MINIMAL_PNG_DATA.len(), 67);
+        Ok(())
     }
 
     #[test]
-    fn test_create_test_png_file() {
-        let (_temp_dir, png_file) = create_test_png_file("test.png");
+    fn test_create_test_png_file() -> Result<()> {
+        let (_temp_dir, png_file) = create_test_png_file("test.png")?;
         assert!(png_file.exists());
         assert_eq!(png_file.file_name().unwrap().to_string_lossy(), "test.png");
         
-        let content = std::fs::read(&png_file).unwrap();
+        let content = std::fs::read(&png_file)?;
         assert_eq!(content, MINIMAL_PNG_DATA);
+        Ok(())
     }
 
     #[test]
-    fn test_create_multiple_test_png_files() {
-        let (_temp_dir, png_files) = create_multiple_test_png_files(3);
+    fn test_create_multiple_test_png_files() -> Result<()> {
+        let (_temp_dir, png_files) = create_multiple_test_png_files(3)?;
         assert_eq!(png_files.len(), 3);
         
         for (i, file) in png_files.iter().enumerate() {
@@ -95,8 +99,9 @@ mod tests {
             let expected_name = format!("test{}.png", i);
             assert_eq!(file.file_name().unwrap().to_string_lossy(), expected_name);
             
-            let content = std::fs::read(file).unwrap();
+            let content = std::fs::read(file)?;
             assert_eq!(content, MINIMAL_PNG_DATA);
         }
+        Ok(())
     }
 }

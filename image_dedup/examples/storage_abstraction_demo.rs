@@ -1,6 +1,6 @@
 use anyhow::Result;
-use image_dedup::perceptual_hash::{PerceptualHashBackend, dct_hash::DCTHasher};
-use image_dedup::storage::{StorageBackend, local::LocalStorageBackend};
+use image_dedup::perceptual_hash::{dct_hash::DctHasher, PerceptualHashBackend};
+use image_dedup::storage::{local::LocalStorageBackend, StorageBackend};
 use std::fs;
 use std::path::Path;
 
@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
         let image = image::load_from_memory(&image_data)?;
 
         // ハッシュを計算
-        let hasher = DCTHasher::new(8);
+        let hasher = DctHasher::new(8);
         let hash = hasher.generate_hash(&image).await?;
 
         let hash_value = hash.to_base64();

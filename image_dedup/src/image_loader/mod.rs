@@ -31,7 +31,7 @@ pub trait ImageLoaderBackend: Send + Sync {
 
     /// 画像フォーマットを指定して読み込む
     async fn load_with_format(&self, data: &[u8], format: image::ImageFormat)
-    -> Result<LoadResult>;
+        -> Result<LoadResult>;
 
     /// 読み込み戦略の名前を取得
     fn strategy_name(&self) -> &'static str;
@@ -54,13 +54,13 @@ mod tests {
 
     #[test]
     fn test_load_result_creation() {
-        use image::{RgbImage, DynamicImage};
-        
+        use image::{DynamicImage, RgbImage};
+
         let img = RgbImage::new(100, 100);
         let dynamic_img = DynamicImage::ImageRgb8(img);
 
         let result = LoadResult {
-            image: dynamic_img.clone(),
+            image: dynamic_img,
             original_dimensions: (200, 150),
             was_resized: true,
             load_time_ms: 50,
@@ -75,8 +75,8 @@ mod tests {
 
     #[test]
     fn test_load_result_debug() {
-        use image::{RgbImage, DynamicImage};
-        
+        use image::{DynamicImage, RgbImage};
+
         let img = RgbImage::new(50, 50);
         let dynamic_img = DynamicImage::ImageRgb8(img);
 
@@ -87,15 +87,15 @@ mod tests {
             load_time_ms: 25,
         };
 
-        let debug_str = format!("{:?}", result);
+        let debug_str = format!("{result:?}");
         assert!(debug_str.contains("100"));
         assert!(debug_str.contains("25"));
     }
 
     #[test]
     fn test_load_result_clone() {
-        use image::{RgbImage, DynamicImage};
-        
+        use image::{DynamicImage, RgbImage};
+
         let img = RgbImage::new(25, 25);
         let dynamic_img = DynamicImage::ImageRgb8(img);
 
@@ -116,13 +116,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_image_loader_backend() {
-        use image::{RgbImage, DynamicImage};
-        
+        use image::{DynamicImage, RgbImage};
+
         let mut mock_loader = MockImageLoaderBackend::new();
-        
+
         let img = RgbImage::new(32, 32);
         let dynamic_img = DynamicImage::ImageRgb8(img);
-        
+
         let expected_result = LoadResult {
             image: dynamic_img,
             original_dimensions: (64, 64),
@@ -157,54 +157,88 @@ mod tests {
     #[test]
     fn test_default_memory_estimation() {
         struct TestLoader;
-        
+
         #[async_trait]
         impl ImageLoaderBackend for TestLoader {
             async fn load_from_bytes(&self, _data: &[u8]) -> Result<LoadResult> {
-                unimplemented!()
+                // Mock implementation for testing
+                Ok(LoadResult {
+                    image: image::DynamicImage::new_rgb8(1, 1),
+                    original_dimensions: (1, 1),
+                    was_resized: false,
+                    load_time_ms: 10,
+                })
             }
-            
+
             async fn load_from_path(&self, _path: &std::path::Path) -> Result<LoadResult> {
-                unimplemented!()
+                // Mock implementation for testing
+                Ok(LoadResult {
+                    image: image::DynamicImage::new_rgb8(1, 1),
+                    original_dimensions: (1, 1),
+                    was_resized: false,
+                    load_time_ms: 10,
+                })
             }
-            
-            async fn load_with_format(&self, _data: &[u8], _format: image::ImageFormat) -> Result<LoadResult> {
-                unimplemented!()
+
+            async fn load_with_format(
+                &self,
+                _data: &[u8],
+                _format: image::ImageFormat,
+            ) -> Result<LoadResult> {
+                // Mock implementation for testing - delegate to load_from_bytes
+                self.load_from_bytes(_data).await
             }
-            
+
             fn strategy_name(&self) -> &'static str {
                 "test"
             }
         }
-        
+
         let loader = TestLoader;
-        
+
         // Test default memory estimation (RGBA8: width * height * 4)
         assert_eq!(loader.estimate_memory_usage(100, 100), 40000); // 100 * 100 * 4
         assert_eq!(loader.estimate_memory_usage(1920, 1080), 8294400); // 1920 * 1080 * 4
-        
+
         // Test default max_supported_pixels (None)
         assert_eq!(loader.max_supported_pixels(), None);
     }
 
-    #[test] 
+    #[test]
     fn test_large_image_memory_calculation() {
         struct TestLoader;
-        
+
         #[async_trait]
         impl ImageLoaderBackend for TestLoader {
             async fn load_from_bytes(&self, _data: &[u8]) -> Result<LoadResult> {
-                unimplemented!()
+                // Mock implementation for testing
+                Ok(LoadResult {
+                    image: image::DynamicImage::new_rgb8(1, 1),
+                    original_dimensions: (1, 1),
+                    was_resized: false,
+                    load_time_ms: 10,
+                })
             }
-            
+
             async fn load_from_path(&self, _path: &std::path::Path) -> Result<LoadResult> {
-                unimplemented!()
+                // Mock implementation for testing
+                Ok(LoadResult {
+                    image: image::DynamicImage::new_rgb8(1, 1),
+                    original_dimensions: (1, 1),
+                    was_resized: false,
+                    load_time_ms: 10,
+                })
             }
-            
-            async fn load_with_format(&self, _data: &[u8], _format: image::ImageFormat) -> Result<LoadResult> {
-                unimplemented!()
+
+            async fn load_with_format(
+                &self,
+                _data: &[u8],
+                _format: image::ImageFormat,
+            ) -> Result<LoadResult> {
+                // Mock implementation for testing - delegate to load_from_bytes
+                self.load_from_bytes(_data).await
             }
-            
+
             fn strategy_name(&self) -> &'static str {
                 "test"
             }
@@ -214,7 +248,7 @@ mod tests {
                 width as u64 * height as u64 * 8 // Assume 8 bytes per pixel
             }
         }
-        
+
         let loader = TestLoader;
         assert_eq!(loader.estimate_memory_usage(1000, 1000), 8000000); // 1000 * 1000 * 8
     }

@@ -5,13 +5,14 @@ mod double_finalize_test {
     use crate::processing::types::ProcessingMetadata;
     use tempfile::TempDir;
     use serde_json::Value;
+    use anyhow::Result;
 
     #[tokio::test]
-    async fn test_double_finalize_bug_fix() {
+    async fn test_double_finalize_bug_fix() -> Result<()> {
         // This test reproduces the original bug scenario:
         // finalize() being called twice, which was overwriting the JSON file
         
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new()?;
         let json_file = temp_dir.path().join("test_double_finalize.json");
         
         let persistence = StreamingJsonHashPersistence::new(&json_file);
@@ -24,15 +25,15 @@ mod double_finalize_test {
         };
         
         // Add some test data
-        persistence.store_hash("/test1.jpg", "hash1", &metadata).await.unwrap();
-        persistence.store_hash("/test2.jpg", "hash2", &metadata).await.unwrap();
+        persistence.store_hash("/test1.jpg", "hash1", &metadata).await?;
+        persistence.store_hash("/test2.jpg", "hash2", &metadata).await?;
         
         // First finalize (from pipeline.execute())
-        persistence.finalize().await.unwrap();
+        persistence.finalize().await?;
         
         // Read content after first finalize
-        let content_after_first = tokio::fs::read_to_string(&json_file).await.unwrap();
-        let json_after_first: Value = serde_json::from_str(&content_after_first).unwrap();
+        let content_after_first = tokio::fs::read_to_string(&json_file).await?;
+        let json_after_first: Value = serde_json::from_str(&content_after_first)?;
         let array_after_first = json_after_first.as_array().unwrap();
         
         // Should have 2 entries after first finalize
@@ -40,11 +41,11 @@ mod double_finalize_test {
         
         // Second finalize (from engine.process_directory_with_config())
         // This used to overwrite the file with empty array - should be safe now
-        persistence.finalize().await.unwrap();
+        persistence.finalize().await?;
         
         // Read content after second finalize
-        let content_after_second = tokio::fs::read_to_string(&json_file).await.unwrap();
-        let json_after_second: Value = serde_json::from_str(&content_after_second).unwrap();
+        let content_after_second = tokio::fs::read_to_string(&json_file).await?;
+        let json_after_second: Value = serde_json::from_str(&content_after_second)?;
         let array_after_second = json_after_second.as_array().unwrap();
         
         // CRITICAL: Should still have 2 entries after second finalize
@@ -59,5 +60,7 @@ mod double_finalize_test {
         assert_eq!(array_after_second[1]["hash"], "hash2");
         
         println!("✅ Double finalize bug fixed: Data preserved after second finalize call!");
+        
+        Ok(())
     }
 }

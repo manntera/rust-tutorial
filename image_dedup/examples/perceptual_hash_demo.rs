@@ -1,9 +1,9 @@
 use anyhow::Result;
 use image::{ImageBuffer, RgbImage};
 use image_dedup::perceptual_hash::{
-    PerceptualHashBackend,
     average_hash::{AverageHasher, DifferenceHasher},
-    dct_hash::DCTHasher,
+    dct_hash::DctHasher,
+    PerceptualHashBackend,
 };
 
 #[tokio::main]
@@ -75,7 +75,7 @@ async fn compare_algorithms(test_images: &[image::DynamicImage]) -> Result<()> {
     println!("1. 異なるアルゴリズムの比較:");
 
     let hashers: Vec<Box<dyn PerceptualHashBackend>> = vec![
-        Box::new(DCTHasher::new(8)),
+        Box::new(DctHasher::new(8)),
         Box::new(AverageHasher::new(8)),
         Box::new(DifferenceHasher::new(8)),
     ];
@@ -114,7 +114,7 @@ async fn compare_hash_sizes(test_image: &image::DynamicImage) -> Result<()> {
     let sizes = [8, 16, 32];
 
     for size in sizes {
-        let hasher = DCTHasher::new(size);
+        let hasher = DctHasher::new(size);
 
         let hash = hasher.generate_hash(test_image).await?;
 
@@ -134,8 +134,8 @@ async fn performance_comparison(test_images: &[image::DynamicImage]) -> Result<(
     let hashers: Vec<Box<dyn PerceptualHashBackend>> = vec![
         Box::new(AverageHasher::new(8)),
         Box::new(DifferenceHasher::new(8)),
-        Box::new(DCTHasher::new(8)),
-        Box::new(DCTHasher::new(16)),
+        Box::new(DctHasher::new(8)),
+        Box::new(DctHasher::new(16)),
     ];
 
     for hasher in &hashers {

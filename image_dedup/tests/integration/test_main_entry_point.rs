@@ -1,4 +1,5 @@
 // main.rsとエントリーポイントのテスト
+use anyhow::Result;
 use tempfile::TempDir;
 use std::fs;
 use std::process::Command;
@@ -13,18 +14,18 @@ const MINIMAL_PNG_DATA: &[u8] = &[
     0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
 ];
 
-fn get_binary_path() -> PathBuf {
-    let mut path = std::env::current_exe().unwrap();
+fn get_binary_path() -> anyhow::Result<PathBuf> {
+    let mut path = std::env::current_exe()?;
     path.pop(); // remove test binary name
     if path.ends_with("deps") {
         path.pop(); // remove deps directory
     }
-    path.join("image_dedup")
+    Ok(path.join("image_dedup"))
 }
 
 #[test]
-fn test_binary_exists() {
-    let binary_path = get_binary_path();
+fn test_binary_exists() -> Result<()> {
+    let binary_path = get_binary_path()?;
     // バイナリの存在確認（統合テスト環境でのみ）
     if binary_path.exists() {
         assert!(binary_path.is_file());
@@ -32,60 +33,61 @@ fn test_binary_exists() {
         // バイナリが存在しない場合はスキップ
         println!("Skipping binary test - binary not found at {:?}", binary_path);
     }
+    Ok(())
 }
 
 #[test]
-fn test_cli_help() {
-    let binary_path = get_binary_path();
+fn test_cli_help() -> Result<()> {
+    let binary_path = get_binary_path()?;
     if !binary_path.exists() {
         println!("Skipping CLI test - binary not found");
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&binary_path)
         .arg("--help")
-        .output()
-        .expect("Failed to execute binary");
+        .output()?;
 
     assert!(output.status.success());
-    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stdout = String::from_utf8(output.stdout)?;
     assert!(stdout.contains("image_dedup"));
     assert!(stdout.contains("scan"));
     assert!(stdout.contains("find-dups"));
     assert!(stdout.contains("process"));
+    Ok(())
 }
 
 #[test]
-fn test_cli_version() {
-    let binary_path = get_binary_path();
+fn test_cli_version() -> Result<()> {
+    let binary_path = get_binary_path()?;
     if !binary_path.exists() {
         println!("Skipping CLI version test - binary not found");
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&binary_path)
         .arg("--version")
-        .output()
-        .expect("Failed to execute binary");
+        .output()?;
 
     assert!(output.status.success());
-    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stdout = String::from_utf8(output.stdout)?;
     assert!(stdout.contains("image_dedup"));
+    Ok(())
 }
 
 #[test]
-fn test_cli_scan_integration() {
-    let binary_path = get_binary_path();
+fn test_cli_scan_integration() -> Result<()> {
+    let binary_path = get_binary_path()?;
     if !binary_path.exists() {
         println!("Skipping CLI scan integration test - binary not found");
-        return;
+        return Ok(());
     }
 
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new()?;
     let output_file = temp_dir.path().join("results.json");
 
     // Create a test image
-    fs::write(temp_dir.path().join("test.png"), MINIMAL_PNG_DATA).unwrap();
+    fs::write(temp_dir.path().join("test.png"), MINIMAL_PNG_DATA)?;
 
     let output = Command::new(&binary_path)
         .arg("scan")
@@ -93,31 +95,31 @@ fn test_cli_scan_integration() {
         .arg("--output")
         .arg(&output_file)
         .arg("--force")
-        .output()
-        .expect("Failed to execute scan command");
+        .output()?;
 
     if output.status.success() {
         assert!(output_file.exists());
         
         // Check output content
-        let content = fs::read_to_string(&output_file).unwrap();
-        let json: serde_json::Value = serde_json::from_str(&content).unwrap();
+        let content = fs::read_to_string(&output_file)?;
+        let json: serde_json::Value = serde_json::from_str(&content)?;
         assert!(json.is_array());
     } else {
-        let stderr = String::from_utf8(output.stderr).unwrap();
+        let stderr = String::from_utf8(output.stderr)?;
         println!("Scan command failed: {}", stderr);
     }
+    Ok(())
 }
 
 #[test]
-fn test_cli_find_dups_integration() {
-    let binary_path = get_binary_path();
+fn test_cli_find_dups_integration() -> Result<()> {
+    let binary_path = get_binary_path()?;
     if !binary_path.exists() {
         println!("Skipping CLI find-dups integration test - binary not found");
-        return;
+        return Ok(());
     }
 
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new()?;
     let hash_db = temp_dir.path().join("hashes.json");
     let output_file = temp_dir.path().join("duplicates.json");
 
@@ -138,7 +140,7 @@ fn test_cli_find_dups_integration() {
             "timestamp": "2024-01-01T00:00:00Z"
         }
     ]"#;
-    fs::write(&hash_db, sample_hashes).unwrap();
+    fs::write(&hash_db, sample_hashes)?;
 
     let output = Command::new(&binary_path)
         .arg("find-dups")
@@ -147,32 +149,32 @@ fn test_cli_find_dups_integration() {
         .arg(&output_file)
         .arg("--threshold")
         .arg("5")
-        .output()
-        .expect("Failed to execute find-dups command");
+        .output()?;
 
     if output.status.success() {
         assert!(output_file.exists());
         
         // Check output content
-        let content = fs::read_to_string(&output_file).unwrap();
-        let json: serde_json::Value = serde_json::from_str(&content).unwrap();
+        let content = fs::read_to_string(&output_file)?;
+        let json: serde_json::Value = serde_json::from_str(&content)?;
         assert!(json.get("total_groups").is_some());
         assert!(json.get("groups").is_some());
     } else {
-        let stderr = String::from_utf8(output.stderr).unwrap();
+        let stderr = String::from_utf8(output.stderr)?;
         println!("Find-dups command failed: {}", stderr);
     }
+    Ok(())
 }
 
 #[test]
-fn test_cli_process_integration() {
-    let binary_path = get_binary_path();
+fn test_cli_process_integration() -> Result<()> {
+    let binary_path = get_binary_path()?;
     if !binary_path.exists() {
         println!("Skipping CLI process integration test - binary not found");
-        return;
+        return Ok(());
     }
 
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new()?;
     let dup_list = temp_dir.path().join("duplicates.json");
 
     // Create sample duplicates report
@@ -182,7 +184,7 @@ fn test_cli_process_integration() {
         "threshold": 5,
         "groups": []
     }"#;
-    fs::write(&dup_list, sample_report).unwrap();
+    fs::write(&dup_list, sample_report)?;
 
     let output = Command::new(&binary_path)
         .arg("process")
@@ -190,87 +192,87 @@ fn test_cli_process_integration() {
         .arg("--action")
         .arg("delete")
         .arg("--no-confirm")
-        .output()
-        .expect("Failed to execute process command");
+        .output()?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8(output.stderr).unwrap();
+        let stderr = String::from_utf8(output.stderr)?;
         println!("Process command failed: {}", stderr);
     }
     // Note: Process command with empty duplicates should succeed
+    Ok(())
 }
 
 #[test]
-fn test_cli_invalid_command() {
-    let binary_path = get_binary_path();
+fn test_cli_invalid_command() -> Result<()> {
+    let binary_path = get_binary_path()?;
     if !binary_path.exists() {
         println!("Skipping CLI invalid command test - binary not found");
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&binary_path)
         .arg("invalid-command")
-        .output()
-        .expect("Failed to execute binary");
+        .output()?;
 
     assert!(!output.status.success());
+    Ok(())
 }
 
 #[test]
-fn test_cli_scan_missing_args() {
-    let binary_path = get_binary_path();
+fn test_cli_scan_missing_args() -> Result<()> {
+    let binary_path = get_binary_path()?;
     if !binary_path.exists() {
         println!("Skipping CLI scan missing args test - binary not found");
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&binary_path)
         .arg("scan")
         // Missing required arguments
-        .output()
-        .expect("Failed to execute binary");
+        .output()?;
 
     assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
+    let stderr = String::from_utf8(output.stderr)?;
     assert!(stderr.contains("required") || stderr.contains("argument"));
+    Ok(())
 }
 
 #[test] 
-fn test_cli_find_dups_missing_args() {
-    let binary_path = get_binary_path();
+fn test_cli_find_dups_missing_args() -> Result<()> {
+    let binary_path = get_binary_path()?;
     if !binary_path.exists() {
         println!("Skipping CLI find-dups missing args test - binary not found");
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&binary_path)
         .arg("find-dups")
         // Missing required arguments
-        .output()
-        .expect("Failed to execute binary");
+        .output()?;
 
     assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
+    let stderr = String::from_utf8(output.stderr)?;
     assert!(stderr.contains("required") || stderr.contains("argument"));
+    Ok(())
 }
 
 #[test]
-fn test_cli_process_missing_args() {
-    let binary_path = get_binary_path();
+fn test_cli_process_missing_args() -> Result<()> {
+    let binary_path = get_binary_path()?;
     if !binary_path.exists() {
         println!("Skipping CLI process missing args test - binary not found");
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&binary_path)
         .arg("process")
         // Missing required arguments
-        .output()
-        .expect("Failed to execute binary");
+        .output()?;
 
     assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
+    let stderr = String::from_utf8(output.stderr)?;
     assert!(stderr.contains("required") || stderr.contains("argument"));
+    Ok(())
 }
 
 // Unit tests for main module functions (using library directly)
@@ -282,7 +284,7 @@ mod main_unit_tests {
     #[test]
     fn test_cli_struct_creation() {
         // Test CLI struct can be created
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temporary directory");
         let output = temp_dir.path().join("test.json");
 
         let cli = Cli {
@@ -299,13 +301,13 @@ mod main_unit_tests {
                 assert_eq!(threads, Some(2));
                 assert!(force);
             }
-            _ => panic!("Expected Scan command"),
+            _ => assert!(false, "Expected Scan command"),
         }
     }
 
     #[test]
     fn test_cli_commands_enum() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temporary directory");
 
         // Test all command variants can be created
         let scan_cmd = Commands::Scan {
@@ -352,7 +354,7 @@ mod main_unit_tests {
     #[tokio::test]
     async fn test_command_execution_flow() {
         // Test that command functions can be called (integration style)
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temporary directory");
         
         // Create test files for scan command
         let png_data = &[

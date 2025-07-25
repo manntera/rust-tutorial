@@ -6,49 +6,68 @@ use img_hash::{HashAlg, HasherConfig};
 use std::time::Instant;
 
 /// DCTベースの知覚ハッシュ実装
-#[derive(Clone)]
-pub struct DCTHasher {
+#[derive(Clone, Debug)]
+pub struct DctHasher {
     algorithm: HashAlgorithm,
     hash_size: u32,
+    quality_factor: f32,
 }
 
-impl DCTHasher {
+impl Default for DctHasher {
+    fn default() -> Self {
+        Self::new(8)
+    }
+}
+
+impl DctHasher {
     pub fn new(size: u32) -> Self {
         Self {
             algorithm: HashAlgorithm::DCT { size },
             hash_size: size,
+            quality_factor: 1.0,
         }
+    }
+
+    pub fn with_quality_factor(size: u32, quality_factor: f32) -> Self {
+        Self {
+            algorithm: HashAlgorithm::DCT { size },
+            hash_size: size,
+            quality_factor,
+        }
+    }
+
+    pub fn get_size(&self) -> u32 {
+        self.hash_size
+    }
+
+    pub fn get_quality_factor(&self) -> f32 {
+        self.quality_factor
     }
 }
 
 #[async_trait]
-impl PerceptualHashBackend for DCTHasher {
+impl PerceptualHashBackend for DctHasher {
     async fn generate_hash(&self, image: &DynamicImage) -> Result<HashResult> {
         let start_time = Instant::now();
 
-        let hash = tokio::task::spawn_blocking({
-            let image = image.clone();
-            let size = self.hash_size;
-            move || {
-                let hasher = HasherConfig::new()
-                    .hash_size(size, size)
-                    .hash_alg(HashAlg::Mean)
-                    .preproc_dct()
-                    .to_hasher();
-
-                let rgb_image = image.to_rgb8();
-                let img_hash_image = img_hash::image::ImageBuffer::from_raw(
-                    rgb_image.width(),
-                    rgb_image.height(),
-                    rgb_image.into_raw(),
-                )
-                .unwrap();
-                let dynamic_img_hash_image =
-                    img_hash::image::DynamicImage::ImageRgb8(img_hash_image);
-                hasher.hash_image(&dynamic_img_hash_image)
-            }
+        let size = self.hash_size;
+        let rgb_image = image.to_rgb8();
+        let hash = tokio::task::spawn_blocking(move || -> Result<img_hash::ImageHash> {
+            let hasher = HasherConfig::new()
+                .hash_size(size, size)
+                .hash_alg(HashAlg::Mean)
+                .preproc_dct()
+                .to_hasher();
+            let img_hash_image = img_hash::image::ImageBuffer::from_raw(
+                rgb_image.width(),
+                rgb_image.height(),
+                rgb_image.into_raw(),
+            )
+            .ok_or_else(|| anyhow::anyhow!("Failed to create image buffer for hash calculation"))?;
+            let dynamic_img_hash_image = img_hash::image::DynamicImage::ImageRgb8(img_hash_image);
+            Ok(hasher.hash_image(&dynamic_img_hash_image))
         })
-        .await?;
+        .await??;
 
         let computation_time_ms = start_time.elapsed().as_millis() as u64;
 
@@ -99,7 +118,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_dct_hash_generation() {
-        let hasher = DCTHasher::new(8);
+        let hasher = DctHasher::new(8);
         let image = DynamicImage::ImageRgb8(RgbImage::new(100, 100));
 
         let result = hasher.generate_hash(&image).await.unwrap();
@@ -113,7 +132,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_dct_hash_similarity() {
-        let hasher = DCTHasher::new(8);
+        let hasher = DctHasher::new(8);
 
         // 同じ画像
         let image1 = DynamicImage::ImageRgb8(RgbImage::new(50, 50));
@@ -131,8 +150,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_dct_hash_different_sizes() {
-        let hasher8 = DCTHasher::new(8);
-        let hasher16 = DCTHasher::new(16);
+        let hasher8 = DctHasher::new(8);
+        let hasher16 = DctHasher::new(16);
 
         let image = DynamicImage::ImageRgb8(RgbImage::new(100, 100));
 
