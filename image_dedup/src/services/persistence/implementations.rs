@@ -52,6 +52,19 @@ impl MemoryHashPersistence {
             .collect())
     }
 
+    /// テスト用：保存されたデータに対してクロージャを実行（clone不要版）
+    pub fn with_stored_data<T, F>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce(&HashMap<String, (String, String, u64, ProcessingMetadata)>) -> T,
+    {
+        let storage_guard = self
+            .storage
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Storage lock poisoned: {}", e))?;
+
+        Ok(f(&storage_guard))
+    }
+
     /// テスト用：完了状態を確認
     pub fn is_finalized(&self) -> Result<bool> {
         let finalized_guard = self
@@ -1114,17 +1127,17 @@ mod streaming_tests {
         let images = json_value["images"].as_array().unwrap();
         assert_eq!(images.len(), 3);
 
+        let expected_extensions = ["jpg", "png", "gif"];
+
         for (i, entry) in images.iter().enumerate() {
-            let expected_path = format!(
-                "/test{}.{}",
-                i + 1,
-                match i {
-                    0 => "jpg",
-                    1 => "png",
-                    2 => "gif",
-                    _ => unreachable!(),
-                }
-            );
+            let extension = expected_extensions.get(i).unwrap_or_else(|| {
+                unreachable!(
+                    "Test setup error: Only {} extensions defined, but accessing index {}",
+                    expected_extensions.len(),
+                    i
+                )
+            });
+            let expected_path = format!("/test{}.{}", i + 1, extension);
             let expected_hash = format!("hash{}", i + 1);
 
             assert_eq!(entry["file_path"], expected_path);

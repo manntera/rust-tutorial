@@ -68,7 +68,7 @@ impl ImageLoaderBackend for StandardImageLoader {
 
         let original_dimensions = (image.width(), image.height());
         let (final_image, was_resized) = self.resize_if_needed(image);
-        let load_time_ms = start_time.elapsed().as_millis() as u64;
+        let load_time_ms = start_time.elapsed().as_millis().min(u64::MAX as u128) as u64;
 
         Ok(LoadResult {
             image: final_image,
@@ -91,7 +91,7 @@ impl ImageLoaderBackend for StandardImageLoader {
 
         let original_dimensions = (image.width(), image.height());
         let (final_image, was_resized) = self.resize_if_needed(image);
-        let load_time_ms = start_time.elapsed().as_millis() as u64;
+        let load_time_ms = start_time.elapsed().as_millis().min(u64::MAX as u128) as u64;
 
         Ok(LoadResult {
             image: final_image,
@@ -117,7 +117,7 @@ impl ImageLoaderBackend for StandardImageLoader {
 
         let original_dimensions = (image.width(), image.height());
         let (final_image, was_resized) = self.resize_if_needed(image);
-        let load_time_ms = start_time.elapsed().as_millis() as u64;
+        let load_time_ms = start_time.elapsed().as_millis().min(u64::MAX as u128) as u64;
 
         Ok(LoadResult {
             image: final_image,
@@ -159,80 +159,85 @@ mod tests {
     use tempfile::tempdir;
 
     #[tokio::test]
-    async fn test_load_from_path() {
-        let temp_dir = tempdir().unwrap();
+    async fn test_load_from_path() -> Result<()> {
+        let temp_dir = tempdir()?;
         let image_path = temp_dir.path().join("test.png");
 
         // テスト画像を作成
         let img = image::RgbImage::new(100, 100);
-        img.save(&image_path).unwrap();
+        img.save(&image_path)?;
 
         let loader = StandardImageLoader::new();
-        let result = loader.load_from_path(&image_path).await.unwrap();
+        let result = loader.load_from_path(&image_path).await?;
 
         assert_eq!(result.original_dimensions, (100, 100));
         assert!(!result.was_resized);
         // 読み込み時間は0msの場合もあるので削除
         assert_eq!(loader.strategy_name(), "Standard");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_load_with_resize() {
-        let temp_dir = tempdir().unwrap();
+    async fn test_load_with_resize() -> Result<()> {
+        let temp_dir = tempdir()?;
         let image_path = temp_dir.path().join("large_test.png");
 
         // 大きなテスト画像を作成
         let img = image::RgbImage::new(300, 200);
-        img.save(&image_path).unwrap();
+        img.save(&image_path)?;
 
         let loader = StandardImageLoader::with_max_dimension(150);
-        let result = loader.load_from_path(&image_path).await.unwrap();
+        let result = loader.load_from_path(&image_path).await?;
 
         assert_eq!(result.original_dimensions, (300, 200));
         assert!(result.was_resized);
         assert!(result.image.width() <= 150);
         assert!(result.image.height() <= 150);
         assert_eq!(loader.strategy_name(), "Standard with size limit");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_load_from_bytes() {
-        let temp_dir = tempdir().unwrap();
+    async fn test_load_from_bytes() -> Result<()> {
+        let temp_dir = tempdir()?;
         let image_path = temp_dir.path().join("test_bytes.png");
 
         // テスト画像を作成してバイト配列として読み込む
         let img = image::RgbImage::new(10, 10);
-        img.save(&image_path).unwrap();
+        img.save(&image_path)?;
 
-        let image_bytes = std::fs::read(&image_path).unwrap();
+        let image_bytes = std::fs::read(&image_path)?;
 
         let loader = StandardImageLoader::new();
-        let result = loader.load_from_bytes(&image_bytes).await.unwrap();
+        let result = loader.load_from_bytes(&image_bytes).await?;
 
         assert_eq!(result.original_dimensions, (10, 10));
         assert!(!result.was_resized);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_load_from_invalid_bytes() {
+    async fn test_load_from_invalid_bytes() -> Result<()> {
         let loader = StandardImageLoader::new();
         let invalid_data = b"this is not an image";
 
         let result = loader.load_from_bytes(invalid_data).await;
         assert!(result.is_err());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_load_from_nonexistent_path() {
+    async fn test_load_from_nonexistent_path() -> Result<()> {
         let loader = StandardImageLoader::new();
         let nonexistent_path = std::path::Path::new("/nonexistent/image.png");
 
         let result = loader.load_from_path(nonexistent_path).await;
         assert!(result.is_err());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_load_with_invalid_format() {
+    async fn test_load_with_invalid_format() -> Result<()> {
         let loader = StandardImageLoader::new();
         let invalid_data = b"invalid image data";
 
@@ -240,19 +245,21 @@ mod tests {
             .load_with_format(invalid_data, ImageFormat::Png)
             .await;
         assert!(result.is_err());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_max_supported_pixels() {
+    async fn test_max_supported_pixels() -> Result<()> {
         let loader_without_limit = StandardImageLoader::new();
         assert_eq!(loader_without_limit.max_supported_pixels(), None);
 
         let loader_with_limit = StandardImageLoader::with_max_dimension(100);
         assert_eq!(loader_with_limit.max_supported_pixels(), Some(10000));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_estimate_memory_usage() {
+    async fn test_estimate_memory_usage() -> Result<()> {
         let loader = StandardImageLoader::new();
         let memory_usage = loader.estimate_memory_usage(100, 100);
         // RGBA8 * 2 (processing overhead) = 4 * 2 = 8 bytes per pixel
@@ -262,24 +269,25 @@ mod tests {
         let limited_memory_usage = loader_with_limit.estimate_memory_usage(100, 100);
         // Should be limited to 50x50
         assert_eq!(limited_memory_usage, 50 * 50 * 8);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_load_with_format_success() {
-        let temp_dir = tempdir().unwrap();
+    async fn test_load_with_format_success() -> Result<()> {
+        let temp_dir = tempdir()?;
         let image_path = temp_dir.path().join("test.png");
 
         // テスト画像を作成
         let img = image::RgbImage::new(20, 20);
-        img.save(&image_path).unwrap();
+        img.save(&image_path)?;
 
-        let image_bytes = std::fs::read(&image_path).unwrap();
+        let image_bytes = std::fs::read(&image_path)?;
         let loader = StandardImageLoader::new();
 
         let result = loader
             .load_with_format(&image_bytes, ImageFormat::Png)
-            .await
-            .unwrap();
+            .await?;
         assert_eq!(result.original_dimensions, (20, 20));
+        Ok(())
     }
 }

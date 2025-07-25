@@ -16,30 +16,10 @@ pub mod storage;
 pub use app::App;
 // core モジュールから明示的にエクスポート
 pub use core::{
-    BoxedProcessingEngine,
-    DIMode,
-    DefaultConfig,
-    DependencyBundle,
-    DependencyContainer,
-    HashPersistence,
-    HighPerformanceConfig,
-    ParallelProcessor,
-    PerformanceCharacteristics,
-    ProcessingConfig,
-    ProcessingEngineFactory,
-    ProcessingEngineVariant,
-    ProcessingError,
-    ProcessingMetadata,
-    ProcessingOutcome,
-    ProcessingResult,
-    ProcessingSummary,
-    ProgressReporter,
-    StaticDIContainer,
-    StaticDependencyProvider,
-    StaticProcessingEngine,
+    DefaultConfig, HashPersistence, HighPerformanceConfig, ParallelProcessor, ProcessingConfig,
+    ProcessingError, ProcessingMetadata, ProcessingOutcome, ProcessingResult, ProcessingSummary,
+    ProgressReporter, StaticDIContainer, StaticDependencyProvider, StaticProcessingEngine,
     TestingConfig,
-    // 統一DI API
-    UnifiedDI,
 };
 // engine モジュールから明示的にエクスポート
 pub use engine::{

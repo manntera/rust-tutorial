@@ -7,7 +7,6 @@ struct HashEntry {
     file_path: String,
     hash: String,
     hash_bits: u64,
-    #[allow(dead_code)]
     metadata: Option<serde_json::Value>, // メタデータはオプショナル（旧フォーマット互換のため）
 }
 
@@ -15,8 +14,15 @@ struct HashEntry {
 #[derive(Debug, Deserialize)]
 struct ScanResult {
     images: Vec<HashEntry>,
-    #[allow(dead_code)]
     scan_info: serde_json::Value,
+}
+
+impl ScanResult {
+    /// スキャン情報の統計を取得
+    fn validate_scan_info(&self) -> bool {
+        // scan_infoが有効なJSON構造を持っているかチェック
+        self.scan_info.is_object()
+    }
 }
 
 // 旧フォーマット互換用の構造体
@@ -77,8 +83,22 @@ pub async fn execute_find_dups(
     let database: HashDatabase = serde_json::from_str(&json_content)?;
 
     let mut hash_entries = match database {
-        HashDatabase::NewFormat(scan_result) => scan_result.images,
-        HashDatabase::OldFormat(entries) => entries,
+        HashDatabase::NewFormat(scan_result) => {
+            // scan_infoの情報を表示
+            if scan_result.validate_scan_info() {
+                if let Some(algorithm) = scan_result.scan_info.get("algorithm") {
+                    println!("🔧 ハッシュアルゴリズム: {algorithm}");
+                }
+                if let Some(total_files) = scan_result.scan_info.get("total_files") {
+                    println!("📁 元スキャン対象ファイル数: {total_files}");
+                }
+            }
+            scan_result.images
+        }
+        HashDatabase::OldFormat(entries) => {
+            println!("⚠️  旧フォーマットのデータベースです");
+            entries
+        }
     };
 
     println!(
@@ -438,5 +458,27 @@ mod tests {
         assert_eq!(deserialized.threshold, 5);
         assert_eq!(deserialized.groups[0].group_id, 0);
         assert_eq!(deserialized.groups[0].files[0].path, "test.jpg");
+    }
+
+    #[test]
+    fn test_scan_result_validation() {
+        let valid_json = r#"{
+            "scan_info": {
+                "algorithm": "dct",
+                "timestamp": "2024-01-01T00:00:00Z"
+            },
+            "images": []
+        }"#;
+
+        let scan_result: ScanResult = serde_json::from_str(valid_json).unwrap();
+        assert!(scan_result.validate_scan_info());
+
+        let invalid_json = r#"{
+            "scan_info": "invalid_structure",
+            "images": []
+        }"#;
+
+        let invalid_scan_result: ScanResult = serde_json::from_str(invalid_json).unwrap();
+        assert!(!invalid_scan_result.validate_scan_info());
     }
 }

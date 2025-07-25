@@ -59,3 +59,4 @@ flamegraph.svg
 # Tarpaulin code coverage
 cobertura.xml
 tarpaulin-report.html
+image_dedup/test_images/

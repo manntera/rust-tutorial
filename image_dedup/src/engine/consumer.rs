@@ -171,15 +171,15 @@ mod tests {
                 assert!(!hash.is_empty());
                 assert_eq!(metadata.image_dimensions, (1, 1));
             }
-            ProcessingOutcome::Error { .. } => panic!("Expected success"),
+            ProcessingOutcome::Error { .. } => unreachable!("Expected success, got error"),
         }
     }
 
     #[tokio::test]
     async fn test_single_consumer_handles_errors() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temporary directory");
         let invalid_file = temp_dir.path().join("invalid.jpg");
-        fs::write(&invalid_file, b"not a valid image").unwrap();
+        fs::write(&invalid_file, b"not a valid image").expect("Failed to write invalid test file");
 
         let (work_tx, work_rx) = mpsc::channel::<String>(10);
         let (result_tx, mut result_rx) = mpsc::channel::<ProcessingOutcome>(10);
@@ -205,7 +205,7 @@ mod tests {
         worker_handle.await.unwrap().unwrap();
 
         match result {
-            ProcessingOutcome::Success { .. } => panic!("Expected error"),
+            ProcessingOutcome::Success { .. } => unreachable!("Expected error, got success"),
             ProcessingOutcome::Error { file_path, error } => {
                 assert!(file_path.ends_with("invalid.jpg"));
                 assert!(!error.is_empty());
@@ -288,7 +288,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_consumer_pool_with_mixed_results() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temporary directory");
 
         // 有効な画像
         let valid_file = temp_dir.path().join("valid.png");
@@ -296,7 +296,7 @@ mod tests {
 
         // 無効な画像
         let invalid_file = temp_dir.path().join("invalid.jpg");
-        fs::write(&invalid_file, b"not a valid image").unwrap();
+        fs::write(&invalid_file, b"not a valid image").expect("Failed to write invalid test file");
 
         let (work_tx, work_rx) = mpsc::channel::<String>(10);
         let (result_tx, mut result_rx) = mpsc::channel::<ProcessingOutcome>(10);

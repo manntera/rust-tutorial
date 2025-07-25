@@ -25,7 +25,7 @@ impl LocalStorageBackend {
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("")
+            .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 filename: {}", path.display()))?
             .to_string();
 
         let extension = if metadata.is_file() {
@@ -217,12 +217,15 @@ mod tests {
     async fn test_exists() {
         let temp_dir = tempdir().unwrap();
         let file_path = temp_dir.path().join("exists.txt");
-        std::fs::write(&file_path, b"content").unwrap();
+        std::fs::write(&file_path, b"content").expect("Failed to write test file");
 
         let backend = LocalStorageBackend::new();
 
         // 存在するファイルのテスト
-        let exists = backend.exists(file_path.to_str().unwrap()).await.unwrap();
+        let exists = backend
+            .exists(file_path.to_str().expect("File path should be valid UTF-8"))
+            .await
+            .expect("exists check should succeed");
         assert!(exists);
 
         // 存在しないファイルのテスト

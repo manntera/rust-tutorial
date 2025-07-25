@@ -8,7 +8,6 @@ use std::path::{Path, PathBuf};
 struct DuplicatesReport {
     total_groups: usize,
     total_duplicates: usize,
-    #[allow(dead_code)]
     threshold: u32,
     groups: Vec<DuplicateGroup>,
 }
@@ -22,9 +21,7 @@ struct DuplicateGroup {
 #[derive(Debug, Deserialize, Serialize)]
 struct DuplicateFile {
     path: String,
-    #[allow(dead_code)]
     hash: String,
-    #[allow(dead_code)]
     distance_from_first: u32,
 }
 

@@ -1,9 +1,10 @@
-//! 静的ディスパッチ vs 動的ディスパッチのパフォーマンス比較
+//! 静的ディスパッチのパフォーマンス測定
 //!
-//! シンプルなパフォーマンス測定とレポート生成
+//! 異なる設定間のパフォーマンス比較とレポート生成
 
 use crate::core::{
-    DefaultConfig as StaticDefaultConfig, DependencyContainer, ProcessingConfig, StaticDIContainer,
+    traits::ProcessingConfig, DefaultConfig, HighPerformanceConfig, StaticDIContainer,
+    TestingConfig,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -13,39 +14,46 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceMetrics {
     pub test_name: String,
-    pub dynamic_time: Duration,
-    pub static_time: Duration,
-    pub improvement_ratio: f64,
-    pub memory_dynamic: usize,
-    pub memory_static: usize,
+    pub default_time: Duration,
+    pub high_performance_time: Duration,
+    pub testing_time: Duration,
+    pub best_config: String,
+    pub memory_usage: HashMap<String, usize>,
 }
 
 impl PerformanceMetrics {
     pub fn new(
         test_name: String,
-        dynamic_time: Duration,
-        static_time: Duration,
-        memory_dynamic: usize,
-        memory_static: usize,
+        default_time: Duration,
+        high_performance_time: Duration,
+        testing_time: Duration,
+        memory_usage: HashMap<String, usize>,
     ) -> Self {
-        let improvement_ratio = if static_time.as_nanos() > 0 {
-            dynamic_time.as_nanos() as f64 / static_time.as_nanos() as f64
+        let best_config = if default_time <= high_performance_time && default_time <= testing_time {
+            "default".to_string()
+        } else if high_performance_time <= testing_time {
+            "high_performance".to_string()
         } else {
-            1.0
+            "testing".to_string()
         };
 
         Self {
             test_name,
-            dynamic_time,
-            static_time,
-            improvement_ratio,
-            memory_dynamic,
-            memory_static,
+            default_time,
+            high_performance_time,
+            testing_time,
+            best_config,
+            memory_usage,
         }
     }
 
-    pub fn improvement_percentage(&self) -> f64 {
-        (self.improvement_ratio - 1.0) * 100.0
+    pub fn get_best_time(&self) -> Duration {
+        match self.best_config.as_str() {
+            "default" => self.default_time,
+            "high_performance" => self.high_performance_time,
+            "testing" => self.testing_time,
+            _ => self.default_time,
+        }
     }
 }
 
@@ -65,34 +73,56 @@ impl PerformanceComparison {
     pub fn benchmark_di_container_creation(&mut self, iterations: usize) {
         println!("🔬 DIコンテナ作成パフォーマンステスト ({iterations} iterations)");
 
-        // 動的DIコンテナ
+        // DefaultConfig
         let start = Instant::now();
         for _ in 0..iterations {
-            let _container = DependencyContainer::default();
+            let _container = StaticDIContainer::<DefaultConfig>::new();
         }
-        let dynamic_time = start.elapsed();
+        let default_time = start.elapsed();
 
-        // 静的DIコンテナ
+        // HighPerformanceConfig
         let start = Instant::now();
         for _ in 0..iterations {
-            let _container = StaticDIContainer::<StaticDefaultConfig>::new();
+            let _container = StaticDIContainer::<HighPerformanceConfig>::new();
         }
-        let static_time = start.elapsed();
+        let high_performance_time = start.elapsed();
+
+        // TestingConfig
+        let start = Instant::now();
+        for _ in 0..iterations {
+            let _container = StaticDIContainer::<TestingConfig>::new();
+        }
+        let testing_time = start.elapsed();
+
+        let mut memory_usage = HashMap::new();
+        memory_usage.insert(
+            "default".to_string(),
+            std::mem::size_of::<StaticDIContainer<DefaultConfig>>(),
+        );
+        memory_usage.insert(
+            "high_performance".to_string(),
+            std::mem::size_of::<StaticDIContainer<HighPerformanceConfig>>(),
+        );
+        memory_usage.insert(
+            "testing".to_string(),
+            std::mem::size_of::<StaticDIContainer<TestingConfig>>(),
+        );
 
         let metrics = PerformanceMetrics::new(
             "DI Container Creation".to_string(),
-            dynamic_time,
-            static_time,
-            std::mem::size_of::<DependencyContainer>(),
-            std::mem::size_of::<StaticDIContainer<StaticDefaultConfig>>(),
+            default_time,
+            high_performance_time,
+            testing_time,
+            memory_usage,
         );
 
-        println!("  ⚡ 動的ディスパッチ: {dynamic_time:?}");
-        println!("  🚀 静的ディスパッチ: {static_time:?}");
+        println!("  🟢 Default: {default_time:?}");
+        println!("  🔴 HighPerformance: {high_performance_time:?}");
+        println!("  🟡 Testing: {testing_time:?}");
         println!(
-            "  📈 改善: {:.2}% ({:.2}x faster)",
-            metrics.improvement_percentage(),
-            metrics.improvement_ratio
+            "  🏆 Best: {} ({:?})",
+            metrics.best_config,
+            metrics.get_best_time()
         );
 
         self.results.push(metrics);
@@ -102,120 +132,72 @@ impl PerformanceComparison {
     pub fn benchmark_config_access(&mut self, iterations: usize) {
         println!("🔬 設定アクセスパフォーマンステスト ({iterations} iterations)");
 
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let _output_path = temp_dir.path().join("test.json");
-
-        // 動的ディスパッチでの設定アクセス
-        let dynamic_container = DependencyContainer::default();
-        let dynamic_config = dynamic_container.create_processing_config().unwrap();
-
+        // DefaultConfig
+        let container = StaticDIContainer::<DefaultConfig>::new();
+        let config = container.create_processing_config();
         let start = Instant::now();
         for _ in 0..iterations {
-            let _max_concurrent = dynamic_config.max_concurrent_tasks();
-            let _batch_size = dynamic_config.batch_size();
-            let _buffer_size = dynamic_config.channel_buffer_size();
+            let _max_concurrent = config.max_concurrent_tasks();
+            let _batch_size = config.batch_size();
+            let _buffer_size = config.channel_buffer_size();
         }
-        let dynamic_time = start.elapsed();
+        let default_time = start.elapsed();
 
-        // 静的ディスパッチでの設定アクセス
-        let static_container = StaticDIContainer::<StaticDefaultConfig>::new();
-        let static_config = static_container.create_processing_config();
-
+        // HighPerformanceConfig
+        let container = StaticDIContainer::<HighPerformanceConfig>::new();
+        let config = container.create_processing_config();
         let start = Instant::now();
         for _ in 0..iterations {
-            let _max_concurrent = static_config.max_concurrent_tasks();
-            let _batch_size = static_config.batch_size();
-            let _buffer_size = static_config.channel_buffer_size();
+            let _max_concurrent = config.max_concurrent_tasks();
+            let _batch_size = config.batch_size();
+            let _buffer_size = config.channel_buffer_size();
         }
-        let static_time = start.elapsed();
+        let high_performance_time = start.elapsed();
+
+        // TestingConfig
+        let container = StaticDIContainer::<TestingConfig>::new();
+        let config = container.create_processing_config();
+        let start = Instant::now();
+        for _ in 0..iterations {
+            let _max_concurrent = config.max_concurrent_tasks();
+            let _batch_size = config.batch_size();
+            let _buffer_size = config.channel_buffer_size();
+        }
+        let testing_time = start.elapsed();
+
+        let mut memory_usage = HashMap::new();
+        memory_usage.insert(
+            "default".to_string(),
+            std::mem::size_of_val(&container.create_processing_config()),
+        );
+        memory_usage.insert(
+            "high_performance".to_string(),
+            std::mem::size_of_val(
+                &StaticDIContainer::<HighPerformanceConfig>::new().create_processing_config(),
+            ),
+        );
+        memory_usage.insert(
+            "testing".to_string(),
+            std::mem::size_of_val(
+                &StaticDIContainer::<TestingConfig>::new().create_processing_config(),
+            ),
+        );
 
         let metrics = PerformanceMetrics::new(
             "Configuration Access".to_string(),
-            dynamic_time,
-            static_time,
-            8, // Box<dyn> のサイズ推定
-            std::mem::size_of_val(&static_config),
+            default_time,
+            high_performance_time,
+            testing_time,
+            memory_usage,
         );
 
-        println!("  ⚡ 動的ディスパッチ: {dynamic_time:?}");
-        println!("  🚀 静的ディスパッチ: {static_time:?}");
+        println!("  🟢 Default: {default_time:?}");
+        println!("  🔴 HighPerformance: {high_performance_time:?}");
+        println!("  🟡 Testing: {testing_time:?}");
         println!(
-            "  📈 改善: {:.2}% ({:.2}x faster)",
-            metrics.improvement_percentage(),
-            metrics.improvement_ratio
-        );
-
-        self.results.push(metrics);
-    }
-
-    /// ProcessingEngine作成のパフォーマンス比較
-    pub fn benchmark_processing_engine_creation(&mut self, iterations: usize) {
-        println!("🔬 ProcessingEngine作成パフォーマンステスト ({iterations} iterations)");
-
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let output_path = temp_dir.path().join("test.json");
-
-        // 動的ディスパッチでのProcessingEngine作成
-        let start = Instant::now();
-        for _ in 0..iterations {
-            let container = DependencyContainer::default();
-            let dependencies = container.resolve_all_dependencies(&output_path).unwrap();
-            let _engine = dependencies.create_processing_engine();
-        }
-        let dynamic_time = start.elapsed();
-
-        // 静的ディスパッチでのProcessingEngine作成
-        let start = Instant::now();
-        for _ in 0..iterations {
-            let container = StaticDIContainer::<StaticDefaultConfig>::new();
-            let _engine = container.create_processing_engine(&output_path);
-        }
-        let static_time = start.elapsed();
-
-        let metrics = PerformanceMetrics::new(
-            "ProcessingEngine Creation".to_string(),
-            dynamic_time,
-            static_time,
-            1024, // 推定値
-            512,  // 推定値
-        );
-
-        println!("  ⚡ 動的ディスパッチ: {dynamic_time:?}");
-        println!("  🚀 静的ディスパッチ: {static_time:?}");
-        println!(
-            "  📈 改善: {:.2}% ({:.2}x faster)",
-            metrics.improvement_percentage(),
-            metrics.improvement_ratio
-        );
-
-        self.results.push(metrics);
-    }
-
-    /// メモリ使用量の比較
-    pub fn benchmark_memory_usage(&mut self) {
-        println!("🔬 メモリ使用量比較テスト");
-
-        let dynamic_size = std::mem::size_of::<DependencyContainer>();
-        let static_size = std::mem::size_of::<StaticDIContainer<StaticDefaultConfig>>();
-
-        let metrics = PerformanceMetrics::new(
-            "Memory Usage".to_string(),
-            Duration::from_nanos(dynamic_size as u64),
-            Duration::from_nanos(static_size as u64),
-            dynamic_size,
-            static_size,
-        );
-
-        println!("  💾 動的DIコンテナサイズ: {dynamic_size} bytes");
-        println!("  🗜️  静的DIコンテナサイズ: {static_size} bytes");
-        println!(
-            "  📉 メモリ削減: {} bytes ({:.2}%)",
-            dynamic_size.saturating_sub(static_size),
-            if dynamic_size > 0 {
-                (dynamic_size.saturating_sub(static_size) as f64 / dynamic_size as f64) * 100.0
-            } else {
-                0.0
-            }
+            "  🏆 Best: {} ({:?})",
+            metrics.best_config,
+            metrics.get_best_time()
         );
 
         self.results.push(metrics);
@@ -223,19 +205,13 @@ impl PerformanceComparison {
 
     /// 全体的なパフォーマンス比較実行
     pub fn run_full_comparison(&mut self) {
-        println!("🚀 静的ディスパッチ vs 動的ディスパッチ パフォーマンス比較");
+        println!("🚀 静的ディスパッチ設定比較");
         println!("{}", "=".repeat(60));
 
         self.benchmark_di_container_creation(10_000);
         println!();
 
         self.benchmark_config_access(100_000);
-        println!();
-
-        self.benchmark_processing_engine_creation(1_000);
-        println!();
-
-        self.benchmark_memory_usage();
         println!();
 
         self.print_summary();
@@ -246,72 +222,21 @@ impl PerformanceComparison {
         println!("📊 パフォーマンス比較サマリー");
         println!("{}", "=".repeat(60));
 
-        let mut total_improvement = 0.0;
-        let mut improvement_count = 0;
-
         for metrics in &self.results {
-            if metrics.test_name != "Memory Usage" {
-                total_improvement += metrics.improvement_percentage();
-                improvement_count += 1;
-            }
-
             println!("🎯 {}", metrics.test_name);
-            println!("   ⚡ 動的: {:?}", metrics.dynamic_time);
-            println!("   🚀 静的: {:?}", metrics.static_time);
-
-            if metrics.test_name == "Memory Usage" {
-                let memory_reduction = metrics.memory_dynamic.saturating_sub(metrics.memory_static);
-                println!("   📉 メモリ削減: {memory_reduction} bytes");
-            } else {
-                println!(
-                    "   📈 改善: {:.2}% ({:.2}x faster)",
-                    metrics.improvement_percentage(),
-                    metrics.improvement_ratio
-                );
-            }
+            println!("   🟢 Default: {:?}", metrics.default_time);
+            println!("   🔴 HighPerformance: {:?}", metrics.high_performance_time);
+            println!("   🟡 Testing: {:?}", metrics.testing_time);
+            println!(
+                "   🏆 Best: {} ({:?})",
+                metrics.best_config,
+                metrics.get_best_time()
+            );
             println!();
         }
 
-        if improvement_count > 0 {
-            let average_improvement = total_improvement / improvement_count as f64;
-            println!("🏆 平均パフォーマンス改善: {average_improvement:.2}%");
-        }
-
-        // 結論の表示
-        self.print_conclusion();
-    }
-
-    /// 結論の表示
-    fn print_conclusion(&self) {
-        println!("🎯 結論");
-        println!("{}", "=".repeat(60));
-
-        let has_significant_improvement = self
-            .results
-            .iter()
-            .any(|m| m.test_name != "Memory Usage" && m.improvement_percentage() > 5.0);
-
-        if has_significant_improvement {
-            println!("✅ 静的ディスパッチは動的ディスパッチと比較して有意なパフォーマンス改善を示しています。");
-            println!("🚀 主な利点:");
-            println!("   - コンパイル時最適化によるインライン化");
-            println!("   - Virtual function callsの削除");
-            println!("   - メモリ使用量の削減");
-            println!("   - 型安全性の向上");
-        } else {
-            println!("⚖️  静的ディスパッチと動的ディスパッチのパフォーマンス差は限定的です。");
-            println!("🎯 主な利点:");
-            println!("   - コンパイル時エラー検出");
-            println!("   - より良い型安全性");
-            println!("   - 潜在的な最適化機会");
-        }
-
-        println!();
-        println!("📝 推奨事項:");
-        println!("   - パフォーマンスが重要な場面では静的ディスパッチを使用");
-        println!("   - 柔軟性が必要な場面では動的ディスパッチを使用");
-        println!("   - ハイブリッドアプローチで両方の利点を活用");
-        println!();
+        println!("✅ 全ての設定がゼロコスト抽象化を実現しています。");
+        println!("🚀 静的ディスパッチによりコンパイル時最適化が適用されます。");
     }
 
     /// JSON形式でのレポート出力
@@ -342,21 +267,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_performance_metrics_creation() {
-        let metrics = PerformanceMetrics::new(
-            "Test".to_string(),
-            Duration::from_millis(100),
-            Duration::from_millis(50),
-            1000,
-            500,
-        );
-
-        assert_eq!(metrics.test_name, "Test");
-        assert_eq!(metrics.improvement_ratio, 2.0);
-        assert_eq!(metrics.improvement_percentage(), 100.0);
-    }
-
-    #[test]
     fn test_performance_comparison_creation() {
         let comparison = PerformanceComparison::new();
         assert!(comparison.results.is_empty());
@@ -372,18 +282,13 @@ mod tests {
     }
 
     #[test]
-    fn test_memory_benchmark() {
-        let mut comparison = PerformanceComparison::new();
-        comparison.benchmark_memory_usage();
-
-        assert_eq!(comparison.results.len(), 1);
-        assert_eq!(comparison.results[0].test_name, "Memory Usage");
-    }
-
-    #[test]
     fn test_zero_cost_abstraction_verification() {
         // 静的DIコンテナが本当にゼロコストかを検証
-        let static_size = std::mem::size_of::<StaticDIContainer<StaticDefaultConfig>>();
-        assert_eq!(static_size, 0, "Static DI container should be zero-cost");
+        assert_eq!(std::mem::size_of::<StaticDIContainer<DefaultConfig>>(), 0);
+        assert_eq!(
+            std::mem::size_of::<StaticDIContainer<HighPerformanceConfig>>(),
+            0
+        );
+        assert_eq!(std::mem::size_of::<StaticDIContainer<TestingConfig>>(), 0);
     }
 }

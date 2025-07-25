@@ -11,6 +11,7 @@ use tempfile::TempDir;
 use std::fs;
 use std::path::PathBuf;
 use serde_json::Value;
+use anyhow::Result;
 
 // テスト用の有効な1x1 PNGファイル
 const MINIMAL_PNG_DATA: &[u8] = &[
@@ -33,36 +34,38 @@ const DIFFERENT_PNG_DATA: &[u8] = &[
 ];
 
 /// テスト環境をセットアップ：複数の画像ファイルを含むディレクトリを作成
-fn setup_test_images(base_dir: &std::path::Path) {
+fn setup_test_images(base_dir: &std::path::Path) -> Result<()> {
     // サブディレクトリを作成
     let subdir1 = base_dir.join("subdir1");
     let subdir2 = base_dir.join("subdir2");
-    fs::create_dir_all(&subdir1).unwrap();
-    fs::create_dir_all(&subdir2).unwrap();
+    fs::create_dir_all(&subdir1)?;
+    fs::create_dir_all(&subdir2)?;
 
     // 様々な画像ファイルを作成
-    fs::write(base_dir.join("image1.png"), MINIMAL_PNG_DATA).unwrap();
-    fs::write(base_dir.join("image2.png"), MINIMAL_PNG_DATA).unwrap(); // 重複
-    fs::write(base_dir.join("image3.png"), DIFFERENT_PNG_DATA).unwrap();
-    fs::write(subdir1.join("nested1.png"), MINIMAL_PNG_DATA).unwrap(); // 重複
-    fs::write(subdir2.join("nested2.png"), DIFFERENT_PNG_DATA).unwrap();
-    fs::write(subdir2.join("nested3.png"), MINIMAL_PNG_DATA).unwrap(); // 重複
+    fs::write(base_dir.join("image1.png"), MINIMAL_PNG_DATA)?;
+    fs::write(base_dir.join("image2.png"), MINIMAL_PNG_DATA)?; // 重複
+    fs::write(base_dir.join("image3.png"), DIFFERENT_PNG_DATA)?;
+    fs::write(subdir1.join("nested1.png"), MINIMAL_PNG_DATA)?; // 重複
+    fs::write(subdir2.join("nested2.png"), DIFFERENT_PNG_DATA)?;
+    fs::write(subdir2.join("nested3.png"), MINIMAL_PNG_DATA)?; // 重複
 
     // 非画像ファイルも含める
-    fs::write(base_dir.join("readme.txt"), "This is a text file").unwrap();
-    fs::write(subdir1.join("config.json"), r#"{"test": true}"#).unwrap();
+    fs::write(base_dir.join("readme.txt"), "This is a text file")?;
+    fs::write(subdir1.join("config.json"), r#"{"test": true}"#)?;
 
     // 破損した画像ファイル
-    fs::write(base_dir.join("corrupted.png"), "NOT_A_PNG").unwrap();
+    fs::write(base_dir.join("corrupted.png"), "NOT_A_PNG")?;
+    
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_full_directory_scan_workflow() {
-    let temp_dir = TempDir::new().unwrap();
+async fn test_full_directory_scan_workflow() -> Result<()> {
+    let temp_dir = TempDir::new()?;
     let output_file = temp_dir.path().join("results.json");
     
     // テスト画像をセットアップ
-    setup_test_images(temp_dir.path());
+    setup_test_images(temp_dir.path())?;
 
     // scanコマンドを実行
     let result = execute_scan(
@@ -78,8 +81,8 @@ async fn test_full_directory_scan_workflow() {
     assert!(output_file.exists());
 
     // 出力ファイルの内容を検証
-    let content = fs::read_to_string(&output_file).unwrap();
-    let json: Value = serde_json::from_str(&content).unwrap();
+    let content = fs::read_to_string(&output_file)?;
+    let json: Value = serde_json::from_str(&content)?;
     let results = json.as_array().unwrap();
 
     // 有効な画像ファイルが5つ処理されていることを確認
@@ -99,14 +102,16 @@ async fn test_full_directory_scan_workflow() {
         assert!(metadata.get("image_dimensions").is_some());
         assert!(metadata.get("was_resized").is_some());
     }
+    
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_duplicate_detection_workflow() {
-    let temp_dir = TempDir::new().unwrap();
+async fn test_duplicate_detection_workflow() -> Result<()> {
+    let temp_dir = TempDir::new()?;
     let output_file = temp_dir.path().join("duplicates.json");
     
-    setup_test_images(temp_dir.path());
+    setup_test_images(temp_dir.path())?;
 
     // 処理エンジンを手動で作成してより詳細な制御
     let engine = ProcessingEngine::new(
@@ -122,8 +127,7 @@ async fn test_duplicate_detection_workflow() {
 
     let result = engine
         .process_directory(temp_dir.path().to_str().unwrap())
-        .await
-        .unwrap();
+        .await?;
 
     // 統計を確認
     assert_eq!(result.total_files, 8); // 全ファイル数（画像・非画像・破損ファイル含む）
@@ -131,8 +135,8 @@ async fn test_duplicate_detection_workflow() {
     assert_eq!(result.error_count, 3); // エラーファイル数（非画像2 + 破損1）
 
     // 結果ファイルを解析して重複検出
-    let content = fs::read_to_string(&output_file).unwrap();
-    let json: Value = serde_json::from_str(&content).unwrap();
+    let content = fs::read_to_string(&output_file)?;
+    let json: Value = serde_json::from_str(&content)?;
     let results = json.as_array().unwrap();
 
     // ハッシュ値でグループ化して重複を検出
@@ -156,15 +160,17 @@ async fn test_duplicate_detection_workflow() {
     // 最大の重複グループが4つのファイルを含むことを確認
     let max_duplicate_count = duplicates.iter().map(|group| group.len()).max().unwrap();
     assert_eq!(max_duplicate_count, 4);
+    
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_different_hash_algorithms() {
-    let temp_dir = TempDir::new().unwrap();
+async fn test_different_hash_algorithms() -> Result<()> {
+    let temp_dir = TempDir::new()?;
     let dct_output = temp_dir.path().join("dct_results.json");
     let avg_output = temp_dir.path().join("avg_results.json");
     
-    setup_test_images(temp_dir.path());
+    setup_test_images(temp_dir.path())?;
 
     // DCTハッシュで処理
     let dct_engine = ProcessingEngine::new(
@@ -178,8 +184,7 @@ async fn test_different_hash_algorithms() {
 
     let dct_result = dct_engine
         .process_directory(temp_dir.path().to_str().unwrap())
-        .await
-        .unwrap();
+        .await?;
 
     // 平均ハッシュで処理
     let avg_engine = ProcessingEngine::new(
@@ -193,8 +198,7 @@ async fn test_different_hash_algorithms() {
 
     let avg_result = avg_engine
         .process_directory(temp_dir.path().to_str().unwrap())
-        .await
-        .unwrap();
+        .await?;
 
     // 両方とも同じ数のファイルを処理
     assert_eq!(dct_result.total_files, avg_result.total_files);
@@ -206,22 +210,24 @@ async fn test_different_hash_algorithms() {
     assert!(avg_output.exists());
 
     // ハッシュ値は異なる可能性がある（アルゴリズムが違うため）
-    let dct_content = fs::read_to_string(&dct_output).unwrap();
-    let avg_content = fs::read_to_string(&avg_output).unwrap();
+    let dct_content = fs::read_to_string(&dct_output)?;
+    let avg_content = fs::read_to_string(&avg_output)?;
     
-    let dct_json: Value = serde_json::from_str(&dct_content).unwrap();
-    let avg_json: Value = serde_json::from_str(&avg_content).unwrap();
+    let dct_json: Value = serde_json::from_str(&dct_content)?;
+    let avg_json: Value = serde_json::from_str(&avg_content)?;
     
     // 同じ数の結果
     assert_eq!(dct_json.as_array().unwrap().len(), avg_json.as_array().unwrap().len());
+    
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_force_overwrite_workflow() {
-    let temp_dir = TempDir::new().unwrap();
+async fn test_force_overwrite_workflow() -> Result<()> {
+    let temp_dir = TempDir::new()?;
     let output_file = temp_dir.path().join("overwrite_test.json");
     
-    setup_test_images(temp_dir.path());
+    setup_test_images(temp_dir.path())?;
 
     // 最初の実行
     let result1 = execute_scan(
@@ -250,11 +256,13 @@ async fn test_force_overwrite_workflow() {
         true, // force = true
     ).await;
     assert!(result3.is_ok());
+    
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_large_directory_performance() {
-    let temp_dir = TempDir::new().unwrap();
+async fn test_large_directory_performance() -> Result<()> {
+    let temp_dir = TempDir::new()?;
     let output_file = temp_dir.path().join("performance_test.json");
     
     // 多数の小さなファイルを作成
@@ -262,7 +270,7 @@ async fn test_large_directory_performance() {
         let filename = format!("test_{:03}.png", i);
         // 半分は重複、半分は異なる
         let data = if i % 2 == 0 { MINIMAL_PNG_DATA } else { DIFFERENT_PNG_DATA };
-        fs::write(temp_dir.path().join(filename), data).unwrap();
+        fs::write(temp_dir.path().join(filename), data)?;
     }
 
     let start_time = std::time::Instant::now();
@@ -279,8 +287,8 @@ async fn test_large_directory_performance() {
     assert!(result.is_ok());
     
     // 結果ファイルの確認
-    let content = fs::read_to_string(&output_file).unwrap();
-    let json: Value = serde_json::from_str(&content).unwrap();
+    let content = fs::read_to_string(&output_file)?;
+    let json: Value = serde_json::from_str(&content)?;
     let results = json.as_array().unwrap();
     assert_eq!(results.len(), 50);
 
@@ -289,11 +297,13 @@ async fn test_large_directory_performance() {
     
     println!("50ファイルの処理時間: {:?}", elapsed);
     println!("平均処理時間: {:.2}ms/ファイル", elapsed.as_millis() as f64 / 50.0);
+    
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_nested_directory_structure() {
-    let temp_dir = TempDir::new().unwrap();
+async fn test_nested_directory_structure() -> Result<()> {
+    let temp_dir = TempDir::new()?;
     let output_file = temp_dir.path().join("nested_test.json");
     
     // 深くネストした構造を作成
@@ -302,13 +312,13 @@ async fn test_nested_directory_structure() {
         .join("level2")
         .join("level3")
         .join("level4");
-    fs::create_dir_all(&deep_path).unwrap();
+    fs::create_dir_all(&deep_path)?;
 
     // 各レベルにファイルを配置
-    fs::write(temp_dir.path().join("root.png"), MINIMAL_PNG_DATA).unwrap();
-    fs::write(temp_dir.path().join("level1").join("l1.png"), MINIMAL_PNG_DATA).unwrap();
-    fs::write(temp_dir.path().join("level1").join("level2").join("l2.png"), DIFFERENT_PNG_DATA).unwrap();
-    fs::write(&deep_path.join("deep.png"), MINIMAL_PNG_DATA).unwrap();
+    fs::write(temp_dir.path().join("root.png"), MINIMAL_PNG_DATA)?;
+    fs::write(temp_dir.path().join("level1").join("l1.png"), MINIMAL_PNG_DATA)?;
+    fs::write(temp_dir.path().join("level1").join("level2").join("l2.png"), DIFFERENT_PNG_DATA)?;
+    fs::write(&deep_path.join("deep.png"), MINIMAL_PNG_DATA)?;
 
     let result = execute_scan(
         temp_dir.path().to_path_buf(),
@@ -320,8 +330,8 @@ async fn test_nested_directory_structure() {
     assert!(result.is_ok());
 
     // 結果確認
-    let content = fs::read_to_string(&output_file).unwrap();
-    let json: Value = serde_json::from_str(&content).unwrap();
+    let content = fs::read_to_string(&output_file)?;
+    let json: Value = serde_json::from_str(&content)?;
     let results = json.as_array().unwrap();
     assert_eq!(results.len(), 4);
 
@@ -332,4 +342,6 @@ async fn test_nested_directory_structure() {
         .collect();
     
     assert!(file_paths.iter().any(|p| p.contains("level4")));
+    
+    Ok(())
 }

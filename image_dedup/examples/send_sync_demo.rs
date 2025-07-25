@@ -11,13 +11,21 @@ struct ThreadSafeData {
 use std::cell::RefCell;
 use std::rc::Rc;
 
-#[allow(dead_code)]
 #[derive(Debug)]
 struct NotThreadSafeData {
     // Rcは参照カウントがスレッドセーフでないためSendでない
     _rc_data: Rc<i32>,
     // RefCellは内部可変性がスレッドセーフでないためSyncでない
     _ref_cell: RefCell<i32>,
+}
+
+impl NotThreadSafeData {
+    fn new(value: i32) -> Self {
+        Self {
+            _rc_data: Rc::new(value),
+            _ref_cell: RefCell::new(value),
+        }
+    }
 }
 
 #[tokio::main]
@@ -31,6 +39,9 @@ async fn main() {
 
     // 2. Sync の例 - 参照を複数のタスクで共有
     demonstrate_sync().await;
+
+    // 3. 実際のStorageBackendでの使用例
+    demonstrate_storage_usage().await;
 
     println!();
 
@@ -79,11 +90,29 @@ async fn demonstrate_sync() {
     println!("  タスク1の結果: {result1_value}");
     let result2_value = result2.unwrap();
     println!("  タスク2の結果: {result2_value}");
+
+    // Send + Syncでない型の例を示す
+    demonstrate_non_thread_safe().await;
+}
+
+// Send + Syncでない型の例
+async fn demonstrate_non_thread_safe() {
+    println!("\n3. Send + Syncでない型の例:");
+
+    let not_safe = NotThreadSafeData::new(42);
+    println!("  スレッドセーフでないデータ: {not_safe:?}");
+
+    // 以下はコンパイルエラーになる（コメントアウト）
+    // let task = tokio::spawn(async move {
+    //     println!("これはコンパイルできない: {not_safe:?}");
+    // });
+
+    println!("  注意: NotThreadSafeDataはtokio::spawnで移動できません");
 }
 
 // StorageBackend での実際の使用例
 async fn demonstrate_storage_usage() {
-    println!("3. StorageBackend での使用例:");
+    println!("4. StorageBackend での使用例:");
 
     // StorageBackendはSend + Syncなので以下が可能
     let storage: Box<dyn StorageBackend> = Box::new(LocalStorageBackend::new());

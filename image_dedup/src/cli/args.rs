@@ -37,9 +37,9 @@ pub enum Commands {
         #[arg(long, default_value = "8")]
         hash_size: u32,
 
-        /// Configuration file path (JSON format)
-        #[arg(short = 'c', long)]
-        config: Option<PathBuf>,
+        /// Configuration preset (default, high_performance, testing)
+        #[arg(short = 'p', long)]
+        config_preset: Option<String>,
     },
 
     /// Find duplicate images using hash database

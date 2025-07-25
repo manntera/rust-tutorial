@@ -148,7 +148,7 @@ where
         engine
             .process_directory(path)
             .await
-            .map_err(|e| anyhow::anyhow!("並列処理エラー: {e}"))
+            .map_err(|e| anyhow::anyhow!("並列処理エラー").context(e))
     }
 
     /// 静音並列処理でディレクトリを処理（バックグラウンド用）
@@ -165,7 +165,7 @@ where
         engine
             .process_directory(path)
             .await
-            .map_err(|e| anyhow::anyhow!("静音並列処理エラー: {e}"))
+            .map_err(|e| anyhow::anyhow!("静音並列処理エラー").context(e))
     }
 }
 

@@ -48,38 +48,6 @@ pub trait ImageLoaderBackend: Send + Sync {
     }
 }
 
-// ImageLoaderBackend for Box<dyn ImageLoaderBackend>
-#[async_trait]
-impl ImageLoaderBackend for Box<dyn ImageLoaderBackend> {
-    async fn load_from_bytes(&self, data: &[u8]) -> Result<LoadResult> {
-        self.as_ref().load_from_bytes(data).await
-    }
-
-    async fn load_from_path(&self, path: &Path) -> Result<LoadResult> {
-        self.as_ref().load_from_path(path).await
-    }
-
-    async fn load_with_format(
-        &self,
-        data: &[u8],
-        format: image::ImageFormat,
-    ) -> Result<LoadResult> {
-        self.as_ref().load_with_format(data, format).await
-    }
-
-    fn strategy_name(&self) -> &'static str {
-        self.as_ref().strategy_name()
-    }
-
-    fn max_supported_pixels(&self) -> Option<u64> {
-        self.as_ref().max_supported_pixels()
-    }
-
-    fn estimate_memory_usage(&self, width: u32, height: u32) -> u64 {
-        self.as_ref().estimate_memory_usage(width, height)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,7 +60,7 @@ mod tests {
         let dynamic_img = DynamicImage::ImageRgb8(img);
 
         let result = LoadResult {
-            image: dynamic_img.clone(),
+            image: dynamic_img,
             original_dimensions: (200, 150),
             was_resized: true,
             load_time_ms: 50,
@@ -193,11 +161,23 @@ mod tests {
         #[async_trait]
         impl ImageLoaderBackend for TestLoader {
             async fn load_from_bytes(&self, _data: &[u8]) -> Result<LoadResult> {
-                unimplemented!()
+                // Mock implementation for testing
+                Ok(LoadResult {
+                    image: image::DynamicImage::new_rgb8(1, 1),
+                    original_dimensions: (1, 1),
+                    was_resized: false,
+                    load_time_ms: 10,
+                })
             }
 
             async fn load_from_path(&self, _path: &std::path::Path) -> Result<LoadResult> {
-                unimplemented!()
+                // Mock implementation for testing
+                Ok(LoadResult {
+                    image: image::DynamicImage::new_rgb8(1, 1),
+                    original_dimensions: (1, 1),
+                    was_resized: false,
+                    load_time_ms: 10,
+                })
             }
 
             async fn load_with_format(
@@ -205,7 +185,8 @@ mod tests {
                 _data: &[u8],
                 _format: image::ImageFormat,
             ) -> Result<LoadResult> {
-                unimplemented!()
+                // Mock implementation for testing - delegate to load_from_bytes
+                self.load_from_bytes(_data).await
             }
 
             fn strategy_name(&self) -> &'static str {
@@ -230,11 +211,23 @@ mod tests {
         #[async_trait]
         impl ImageLoaderBackend for TestLoader {
             async fn load_from_bytes(&self, _data: &[u8]) -> Result<LoadResult> {
-                unimplemented!()
+                // Mock implementation for testing
+                Ok(LoadResult {
+                    image: image::DynamicImage::new_rgb8(1, 1),
+                    original_dimensions: (1, 1),
+                    was_resized: false,
+                    load_time_ms: 10,
+                })
             }
 
             async fn load_from_path(&self, _path: &std::path::Path) -> Result<LoadResult> {
-                unimplemented!()
+                // Mock implementation for testing
+                Ok(LoadResult {
+                    image: image::DynamicImage::new_rgb8(1, 1),
+                    original_dimensions: (1, 1),
+                    was_resized: false,
+                    load_time_ms: 10,
+                })
             }
 
             async fn load_with_format(
@@ -242,7 +235,8 @@ mod tests {
                 _data: &[u8],
                 _format: image::ImageFormat,
             ) -> Result<LoadResult> {
-                unimplemented!()
+                // Mock implementation for testing - delegate to load_from_bytes
+                self.load_from_bytes(_data).await
             }
 
             fn strategy_name(&self) -> &'static str {

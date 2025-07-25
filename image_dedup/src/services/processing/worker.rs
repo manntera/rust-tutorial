@@ -33,7 +33,7 @@ where
         // メタデータ作成
         let metadata = ProcessingMetadata {
             file_size,
-            processing_time_ms: start_time.elapsed().as_millis() as u64,
+            processing_time_ms: start_time.elapsed().as_millis().min(u64::MAX as u128) as u64,
             image_dimensions: (load_result.image.width(), load_result.image.height()),
             was_resized: load_result.was_resized,
         };

@@ -103,7 +103,7 @@ mod tests {
                 assert!(metadata.was_resized);
             }
             ProcessingOutcome::Error { .. } => {
-                panic!("Expected Success variant");
+                unreachable!("Expected Success variant, got Error");
             }
         }
     }
@@ -117,7 +117,7 @@ mod tests {
 
         match result {
             ProcessingOutcome::Success { .. } => {
-                panic!("Expected Error variant");
+                unreachable!("Expected Error variant, got Success");
             }
             ProcessingOutcome::Error { file_path, error } => {
                 assert_eq!(file_path, PathBuf::from("/test/invalid.jpg"));

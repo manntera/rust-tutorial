@@ -75,7 +75,24 @@ impl StaticDependencyProvider for DefaultConfig {
             size: 8,
             quality_factor: 1.0,
         };
-        config.create_hasher().expect("Failed to create DCT hasher")
+        // 非フォールバック版では、この設定が常に有効であることが保証されている
+        config.create_hasher().unwrap_or_else(|_| {
+            // このコードパスに到達することは設計上ありえないが、
+            // 万が一のためのフォールバック
+            unreachable!("DCT config with size 8 should always create a valid hasher")
+        })
+    }
+
+    fn try_create_perceptual_hash() -> crate::core::ProcessingResult<Self::PerceptualHash> {
+        let config = DctConfig {
+            size: 8,
+            quality_factor: 1.0,
+        };
+        config.create_hasher().map_err(|e| {
+            crate::core::ProcessingError::dependency_injection(format!(
+                "Failed to create DCT hasher for DefaultConfig: {e}"
+            ))
+        })
     }
 
     fn create_storage() -> Self::Storage {
@@ -115,7 +132,8 @@ impl StaticDependencyProvider for HighPerformanceConfig {
     type HashPersistence = StreamingJsonHashPersistence;
 
     const DEPENDENCIES_VALID: bool = true;
-    const DEPENDENCY_DESCRIPTION: &'static str = "High performance configuration for maximum throughput";
+    const DEPENDENCY_DESCRIPTION: &'static str =
+        "High performance configuration for maximum throughput";
 
     fn create_image_loader() -> Self::ImageLoader {
         StandardImageLoader::new()
@@ -126,7 +144,24 @@ impl StaticDependencyProvider for HighPerformanceConfig {
             size: 32,
             quality_factor: 1.0,
         };
-        config.create_hasher().expect("Failed to create DCT hasher")
+        // 非フォールバック版では、この設定が常に有効であることが保証されている
+        config.create_hasher().unwrap_or_else(|_| {
+            // このコードパスに到達することは設計上ありえないが、
+            // 万が一のためのフォールバック
+            unreachable!("DCT config with size 32 should always create a valid hasher")
+        })
+    }
+
+    fn try_create_perceptual_hash() -> crate::core::ProcessingResult<Self::PerceptualHash> {
+        let config = DctConfig {
+            size: 32,
+            quality_factor: 1.0,
+        };
+        config.create_hasher().map_err(|e| {
+            crate::core::ProcessingError::dependency_injection(format!(
+                "Failed to create DCT hasher for HighPerformanceConfig: {e}"
+            ))
+        })
     }
 
     fn create_storage() -> Self::Storage {
@@ -166,7 +201,8 @@ impl StaticDependencyProvider for TestingConfig {
     type HashPersistence = MemoryHashPersistence;
 
     const DEPENDENCIES_VALID: bool = true;
-    const DEPENDENCY_DESCRIPTION: &'static str = "Testing configuration with lightweight components";
+    const DEPENDENCY_DESCRIPTION: &'static str =
+        "Testing configuration with lightweight components";
 
     fn create_image_loader() -> Self::ImageLoader {
         StandardImageLoader::new()
@@ -174,9 +210,21 @@ impl StaticDependencyProvider for TestingConfig {
 
     fn create_perceptual_hash() -> Self::PerceptualHash {
         let config = AverageConfig { size: 8 };
-        config
-            .create_hasher()
-            .expect("Failed to create Average hasher")
+        // 非フォールバック版では、この設定が常に有効であることが保証されている
+        config.create_hasher().unwrap_or_else(|_| {
+            // このコードパスに到達することは設計上ありえないが、
+            // 万が一のためのフォールバック
+            unreachable!("Average config with size 8 should always create a valid hasher")
+        })
+    }
+
+    fn try_create_perceptual_hash() -> crate::core::ProcessingResult<Self::PerceptualHash> {
+        let config = AverageConfig { size: 8 };
+        config.create_hasher().map_err(|e| {
+            crate::core::ProcessingError::dependency_injection(format!(
+                "Failed to create Average hasher for TestingConfig: {e}"
+            ))
+        })
     }
 
     fn create_storage() -> Self::Storage {
@@ -266,18 +314,23 @@ where
 }
 
 /// カスタム設定のStaticDependencyProvider実装
-/// 
-/// 注意：この実装はコンパイル時に具象型が確定している場合のみ使用可能
-/// ここでは型パラメータを使用するため、実際の作成は困難
-/// 代わりにCustomStaticProviderを使用することを推奨
+///
+/// Default依存を削除し、より厳密な型制約を使用
+/// 具体的な作成方法は各型で実装される専用トレイトに委ねる
 impl<IL, PH, S, PC, PR, HP> StaticDependencyProvider for CustomConfig<IL, PH, S, PC, PR, HP>
 where
-    IL: ImageLoaderBackend + Send + Sync + 'static + Default,
-    PH: PerceptualHashBackend + Send + Sync + 'static + Default,
-    S: StorageBackend + Send + Sync + 'static + Default,
-    PC: ProcessingConfig + Send + Sync + 'static + Default,
-    PR: ProgressReporter + Send + Sync + 'static + Default,
-    HP: HashPersistence + Send + Sync + 'static + Default,
+    IL: ImageLoaderBackend + Send + Sync + 'static,
+    PH: PerceptualHashBackend + Send + Sync + 'static,
+    S: StorageBackend + Send + Sync + 'static,
+    PC: ProcessingConfig + Send + Sync + 'static,
+    PR: ProgressReporter + Send + Sync + 'static,
+    HP: HashPersistence + Send + Sync + 'static,
+    CustomConfig<IL, PH, S, PC, PR, HP>: crate::factories::StaticComponentCreator<IL>,
+    CustomConfig<IL, PH, S, PC, PR, HP>: crate::factories::StaticComponentCreator<PH>,
+    CustomConfig<IL, PH, S, PC, PR, HP>: crate::factories::StaticComponentCreator<S>,
+    CustomConfig<IL, PH, S, PC, PR, HP>: crate::factories::StaticComponentCreator<PC>,
+    CustomConfig<IL, PH, S, PC, PR, HP>: crate::factories::StaticComponentCreator<PR>,
+    CustomConfig<IL, PH, S, PC, PR, HP>: crate::factories::StaticComponentCreatorWithPath<HP>,
 {
     type ImageLoader = IL;
     type PerceptualHash = PH;
@@ -286,28 +339,34 @@ where
     type ProgressReporter = PR;
     type HashPersistence = HP;
 
+    const DEPENDENCIES_VALID: bool = true;
+    const DEPENDENCY_DESCRIPTION: &'static str =
+        "Custom configuration with type-safe component creation";
+
     fn create_image_loader() -> Self::ImageLoader {
-        IL::default()
+        <Self as crate::factories::StaticComponentCreator<IL>>::create()
     }
 
     fn create_perceptual_hash() -> Self::PerceptualHash {
-        PH::default()
+        <Self as crate::factories::StaticComponentCreator<PH>>::create()
     }
 
     fn create_storage() -> Self::Storage {
-        S::default()
+        <Self as crate::factories::StaticComponentCreator<S>>::create()
     }
 
     fn create_processing_config() -> Self::ProcessingConfig {
-        PC::default()
+        <Self as crate::factories::StaticComponentCreator<PC>>::create()
     }
 
     fn create_progress_reporter() -> Self::ProgressReporter {
-        PR::default()
+        <Self as crate::factories::StaticComponentCreator<PR>>::create()
     }
 
-    fn create_hash_persistence(_output_path: &std::path::Path) -> Self::HashPersistence {
-        HP::default()
+    fn create_hash_persistence(output_path: &std::path::Path) -> Self::HashPersistence {
+        <Self as crate::factories::StaticComponentCreatorWithPath<HP>>::create_with_path(
+            output_path,
+        )
     }
 }
 
@@ -326,7 +385,7 @@ where
     const BUFFER_SIZE_VALID: bool = true;
     const THREAD_COUNT_VALID: bool = true;
     const HASH_SIZE_VALID: bool = true;
-    
+
     const IS_VALID: bool = Self::BATCH_SIZE_VALID
         && Self::BUFFER_SIZE_VALID
         && Self::THREAD_COUNT_VALID
@@ -359,7 +418,7 @@ impl StaticConfigValidator for DefaultConfig {
         assumed_cpus >= Self::MIN_THREADS && assumed_cpus <= Self::MAX_THREADS
     };
     const HASH_SIZE_VALID: bool = 8 >= Self::MIN_HASH_SIZE && 8 <= Self::MAX_HASH_SIZE;
-    
+
     const IS_VALID: bool = Self::BATCH_SIZE_VALID
         && Self::BUFFER_SIZE_VALID
         && Self::THREAD_COUNT_VALID
@@ -376,7 +435,7 @@ impl StaticConfigValidator for HighPerformanceConfig {
         assumed_cpus >= Self::MIN_THREADS && assumed_cpus <= Self::MAX_THREADS
     };
     const HASH_SIZE_VALID: bool = 32 >= Self::MIN_HASH_SIZE && 32 <= Self::MAX_HASH_SIZE;
-    
+
     const IS_VALID: bool = Self::BATCH_SIZE_VALID
         && Self::BUFFER_SIZE_VALID
         && Self::THREAD_COUNT_VALID
@@ -390,7 +449,7 @@ impl StaticConfigValidator for TestingConfig {
     const BUFFER_SIZE_VALID: bool = 10 >= Self::MIN_BUFFER_SIZE && 10 <= Self::MAX_BUFFER_SIZE;
     const THREAD_COUNT_VALID: bool = 2 >= Self::MIN_THREADS && 2 <= Self::MAX_THREADS;
     const HASH_SIZE_VALID: bool = 8 >= Self::MIN_HASH_SIZE && 8 <= Self::MAX_HASH_SIZE;
-    
+
     const IS_VALID: bool = Self::BATCH_SIZE_VALID
         && Self::BUFFER_SIZE_VALID
         && Self::THREAD_COUNT_VALID
@@ -426,19 +485,35 @@ macro_rules! validate_static_config {
         const _: () = {
             // 各制約を個別にチェックして詳細なエラーメッセージを提供
             if !<$config as $crate::core::static_config::StaticConfigValidator>::BATCH_SIZE_VALID {
-                panic!("BatchSize制約違反: {}", <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE);
+                compile_error!(concat!(
+                    "BatchSize制約違反: ",
+                    <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE
+                ));
             }
             if !<$config as $crate::core::static_config::StaticConfigValidator>::BUFFER_SIZE_VALID {
-                panic!("BufferSize制約違反: {}", <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE);
+                compile_error!(concat!(
+                    "BufferSize制約違反: ",
+                    <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE
+                ));
             }
-            if !<$config as $crate::core::static_config::StaticConfigValidator>::THREAD_COUNT_VALID {
-                panic!("ThreadCount制約違反: {}", <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE);
+            if !<$config as $crate::core::static_config::StaticConfigValidator>::THREAD_COUNT_VALID
+            {
+                compile_error!(concat!(
+                    "ThreadCount制約違反: ",
+                    <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE
+                ));
             }
             if !<$config as $crate::core::static_config::StaticConfigValidator>::HASH_SIZE_VALID {
-                panic!("HashSize制約違反: {}", <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE);
+                compile_error!(concat!(
+                    "HashSize制約違反: ",
+                    <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE
+                ));
             }
             if !<$config as $crate::core::static_config::StaticConfigValidator>::IS_VALID {
-                panic!("総合制約違反: {}", <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE);
+                compile_error!(concat!(
+                    "総合制約違反: ",
+                    <$config as $crate::core::static_config::StaticConfigValidator>::ERROR_MESSAGE
+                ));
             }
         };
     };
@@ -450,7 +525,7 @@ macro_rules! const_assert_config {
     ($condition:expr, $message:expr) => {
         const _: () = {
             if !$condition {
-                panic!($message);
+                compile_error!($message);
             }
         };
     };
@@ -458,7 +533,7 @@ macro_rules! const_assert_config {
     ($condition:expr, $message:expr, $config:ty) => {
         const _: () = {
             if !$condition {
-                panic!("{} - Config: {}", $message, stringify!($config));
+                compile_error!(concat!($message, " - Config: ", stringify!($config)));
             }
         };
     };
@@ -473,25 +548,25 @@ macro_rules! enforce_config_constraints {
             <$config as $crate::core::static_config::AdvancedConfigConstraints>::MIN_BATCH_SIZE <= <$config as $crate::core::static_config::AdvancedConfigConstraints>::MAX_BATCH_SIZE,
             "MIN_BATCH_SIZE must be <= MAX_BATCH_SIZE"
         );
-        
+
         // バッファサイズ制約
         $crate::const_assert_config!(
             <$config as $crate::core::static_config::AdvancedConfigConstraints>::MIN_BUFFER_SIZE <= <$config as $crate::core::static_config::AdvancedConfigConstraints>::MAX_BUFFER_SIZE,
             "MIN_BUFFER_SIZE must be <= MAX_BUFFER_SIZE"
         );
-        
+
         // スレッド数制約
         $crate::const_assert_config!(
             <$config as $crate::core::static_config::AdvancedConfigConstraints>::MIN_THREADS <= <$config as $crate::core::static_config::AdvancedConfigConstraints>::MAX_THREADS,
             "MIN_THREADS must be <= MAX_THREADS"
         );
-        
+
         // ハッシュサイズ制約
         $crate::const_assert_config!(
             <$config as $crate::core::static_config::AdvancedConfigConstraints>::MIN_HASH_SIZE <= <$config as $crate::core::static_config::AdvancedConfigConstraints>::MAX_HASH_SIZE,
             "MIN_HASH_SIZE must be <= MAX_HASH_SIZE"
         );
-        
+
         // 実際の設定値制約
         $crate::validate_static_config!($config);
     };
@@ -504,20 +579,34 @@ macro_rules! verify_type_safety {
         // 静的アサート（実行時チェック）
         fn _verify_type_safety() {
             // ゼロコスト抽象化の確認
-            assert_eq!(std::mem::size_of::<$config>(), 0, "Config should be zero-sized");
-            
+            assert_eq!(
+                std::mem::size_of::<$config>(),
+                0,
+                "Config should be zero-sized"
+            );
+
             // Send + Sync の確認（コンパイル時）
             fn assert_send<T: Send>() {}
             fn assert_sync<T: Sync>() {}
-            
-            assert_send::<<$config as $crate::core::static_di::StaticDependencyProvider>::ImageLoader>();
-            assert_sync::<<$config as $crate::core::static_di::StaticDependencyProvider>::ImageLoader>();
-            
-            assert_send::<<$config as $crate::core::static_di::StaticDependencyProvider>::PerceptualHash>();
-            assert_sync::<<$config as $crate::core::static_di::StaticDependencyProvider>::PerceptualHash>();
-            
-            assert_send::<<$config as $crate::core::static_di::StaticDependencyProvider>::Storage>();
-            assert_sync::<<$config as $crate::core::static_di::StaticDependencyProvider>::Storage>();
+
+            assert_send::<
+                <$config as $crate::core::static_di::StaticDependencyProvider>::ImageLoader,
+            >();
+            assert_sync::<
+                <$config as $crate::core::static_di::StaticDependencyProvider>::ImageLoader,
+            >();
+
+            assert_send::<
+                <$config as $crate::core::static_di::StaticDependencyProvider>::PerceptualHash,
+            >();
+            assert_sync::<
+                <$config as $crate::core::static_di::StaticDependencyProvider>::PerceptualHash,
+            >();
+
+            assert_send::<<$config as $crate::core::static_di::StaticDependencyProvider>::Storage>(
+            );
+            assert_sync::<<$config as $crate::core::static_di::StaticDependencyProvider>::Storage>(
+            );
         }
     };
 }
@@ -595,41 +684,153 @@ mod tests {
 
     #[test]
     fn test_config_validation() {
-        // 簡単な実行時バリデーション
-        assert!(DefaultConfig::IS_VALID);
-        assert!(HighPerformanceConfig::IS_VALID);
-        assert!(TestingConfig::IS_VALID);
+        // 実際の設定値を使った実行時テスト
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let _output_path = temp_dir.path().join("test.json");
+
+        // DefaultConfigの実際の動作をテスト
+        let default_container = StaticDIContainer::<DefaultConfig>::new();
+        let default_config = default_container.create_processing_config();
+        assert!(default_config.max_concurrent_tasks() > 0);
+        assert!(default_config.batch_size() > 0);
+        assert!(default_config.channel_buffer_size() > 0);
+
+        // HighPerformanceConfigの実際の動作をテスト
+        let hp_container = StaticDIContainer::<HighPerformanceConfig>::new();
+        let hp_config = hp_container.create_processing_config();
+        assert!(hp_config.max_concurrent_tasks() > default_config.max_concurrent_tasks());
+        assert!(hp_config.batch_size() > default_config.batch_size());
+        assert!(hp_config.channel_buffer_size() > default_config.channel_buffer_size());
+
+        // TestingConfigの実際の動作をテスト
+        let test_container = StaticDIContainer::<TestingConfig>::new();
+        let test_config = test_container.create_processing_config();
+        assert!(test_config.max_concurrent_tasks() > 0);
+        assert!(test_config.batch_size() > 0);
+        assert!(test_config.channel_buffer_size() > 0);
+
+        // 実行時での設定値整合性を実際にテスト
+        let default_container = StaticDIContainer::<DefaultConfig>::new();
+        let default_config = default_container.create_processing_config();
+        assert!(default_config.max_concurrent_tasks() > 0);
+        assert!(default_config.batch_size() > 0);
+        assert!(default_config.channel_buffer_size() > 0);
     }
 
     #[test]
     fn test_static_config_constraints() {
-        // 各設定の制約値をテスト
-        assert!(DefaultConfig::BATCH_SIZE_VALID);
-        assert!(DefaultConfig::BUFFER_SIZE_VALID);
-        assert!(DefaultConfig::THREAD_COUNT_VALID);
-        assert!(DefaultConfig::HASH_SIZE_VALID);
-        assert!(DefaultConfig::IS_VALID);
+        // 実際の設定値が予想範囲内であることをテスト
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let _output_path = temp_dir.path().join("test.json");
 
-        assert!(HighPerformanceConfig::BATCH_SIZE_VALID);
-        assert!(HighPerformanceConfig::BUFFER_SIZE_VALID);
-        assert!(HighPerformanceConfig::THREAD_COUNT_VALID);
-        assert!(HighPerformanceConfig::HASH_SIZE_VALID);
-        assert!(HighPerformanceConfig::IS_VALID);
+        // DefaultConfigの実際の値をテスト
+        let default_container = StaticDIContainer::<DefaultConfig>::new();
+        let default_config = default_container.create_processing_config();
+        assert!(default_config.batch_size() >= 1);
+        assert!(default_config.batch_size() <= 10000);
+        assert!(default_config.channel_buffer_size() >= 1);
+        assert!(default_config.channel_buffer_size() <= 100000);
+        assert!(default_config.max_concurrent_tasks() >= 1);
+        assert!(default_config.max_concurrent_tasks() <= 1024);
 
-        assert!(TestingConfig::BATCH_SIZE_VALID);
-        assert!(TestingConfig::BUFFER_SIZE_VALID);
-        assert!(TestingConfig::THREAD_COUNT_VALID);
-        assert!(TestingConfig::HASH_SIZE_VALID);
-        assert!(TestingConfig::IS_VALID);
+        // HighPerformanceConfigの実際の値をテスト
+        let hp_container = StaticDIContainer::<HighPerformanceConfig>::new();
+        let hp_config = hp_container.create_processing_config();
+        assert!(hp_config.batch_size() >= 1);
+        assert!(hp_config.batch_size() <= 10000);
+        assert!(hp_config.channel_buffer_size() >= 1);
+        assert!(hp_config.channel_buffer_size() <= 100000);
+        assert!(hp_config.max_concurrent_tasks() >= 1);
+        assert!(hp_config.max_concurrent_tasks() <= 1024);
+
+        // TestingConfigの実際の値をテスト
+        let test_container = StaticDIContainer::<TestingConfig>::new();
+        let test_config = test_container.create_processing_config();
+        assert!(test_config.batch_size() >= 1);
+        assert!(test_config.batch_size() <= 10000);
+        assert!(test_config.channel_buffer_size() >= 1);
+        assert!(test_config.channel_buffer_size() <= 100000);
+        assert!(test_config.max_concurrent_tasks() >= 1);
+        assert!(test_config.max_concurrent_tasks() <= 1024);
+
+        // 実際の値範囲をテスト
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let _output_path = temp_dir.path().join("test.json");
+
+        let default_container = StaticDIContainer::<DefaultConfig>::new();
+        let default_config = default_container.create_processing_config();
+        assert!(default_config.batch_size() >= DefaultConfig::MIN_BATCH_SIZE);
+        assert!(default_config.batch_size() <= DefaultConfig::MAX_BATCH_SIZE);
+
+        let hp_container = StaticDIContainer::<HighPerformanceConfig>::new();
+        let hp_config = hp_container.create_processing_config();
+        assert!(hp_config.batch_size() >= HighPerformanceConfig::MIN_BATCH_SIZE);
+        assert!(hp_config.batch_size() <= HighPerformanceConfig::MAX_BATCH_SIZE);
     }
 
     #[test]
     fn test_advanced_config_constraints() {
-        // 制約定数の一貫性をテスト
-        assert!(DefaultConfig::MIN_BATCH_SIZE <= DefaultConfig::MAX_BATCH_SIZE);
-        assert!(DefaultConfig::MIN_BUFFER_SIZE <= DefaultConfig::MAX_BUFFER_SIZE);
-        assert!(DefaultConfig::MIN_THREADS <= DefaultConfig::MAX_THREADS);
-        assert!(DefaultConfig::MIN_HASH_SIZE <= DefaultConfig::MAX_HASH_SIZE);
+        // 制約定数の範囲が合理的であることをテスト
+        // MIN値が1以上であることを確認
+        let min_batch = DefaultConfig::MIN_BATCH_SIZE;
+        let max_batch = DefaultConfig::MAX_BATCH_SIZE;
+        assert!(
+            min_batch >= 1,
+            "MIN_BATCH_SIZE should be at least 1, got {min_batch}"
+        );
+        assert!(
+            max_batch <= 100000,
+            "MAX_BATCH_SIZE should be reasonable, got {max_batch}"
+        );
+        assert!(
+            min_batch <= max_batch,
+            "MIN_BATCH_SIZE ({min_batch}) should be <= MAX_BATCH_SIZE ({max_batch})"
+        );
+
+        let min_buffer = DefaultConfig::MIN_BUFFER_SIZE;
+        let max_buffer = DefaultConfig::MAX_BUFFER_SIZE;
+        assert!(
+            min_buffer >= 1,
+            "MIN_BUFFER_SIZE should be at least 1, got {min_buffer}"
+        );
+        assert!(
+            max_buffer <= 200000,
+            "MAX_BUFFER_SIZE should be reasonable, got {max_buffer}"
+        );
+        assert!(
+            min_buffer <= max_buffer,
+            "MIN_BUFFER_SIZE ({min_buffer}) should be <= MAX_BUFFER_SIZE ({max_buffer})"
+        );
+
+        let min_threads = DefaultConfig::MIN_THREADS;
+        let max_threads = DefaultConfig::MAX_THREADS;
+        assert!(
+            min_threads >= 1,
+            "MIN_THREADS should be at least 1, got {min_threads}"
+        );
+        assert!(
+            max_threads <= 2048,
+            "MAX_THREADS should be reasonable, got {max_threads}"
+        );
+        assert!(
+            min_threads <= max_threads,
+            "MIN_THREADS ({min_threads}) should be <= MAX_THREADS ({max_threads})"
+        );
+
+        let min_hash = DefaultConfig::MIN_HASH_SIZE;
+        let max_hash = DefaultConfig::MAX_HASH_SIZE;
+        assert!(
+            min_hash >= 4,
+            "MIN_HASH_SIZE should be at least 4, got {min_hash}"
+        );
+        assert!(
+            max_hash <= 512,
+            "MAX_HASH_SIZE should be reasonable, got {max_hash}"
+        );
+        assert!(
+            min_hash <= max_hash,
+            "MIN_HASH_SIZE ({min_hash}) should be <= MAX_HASH_SIZE ({max_hash})"
+        );
     }
 
     #[test]

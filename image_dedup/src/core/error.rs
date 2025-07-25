@@ -45,16 +45,10 @@ pub enum ProcessingError {
     DependencyInjectionError { message: String },
 
     #[error("型安全性エラー: {message} (コンポーネント: {component})")]
-    TypeSafetyError {
-        message: String,
-        component: String,
-    },
+    TypeSafetyError { message: String, component: String },
 
     #[error("バリデーションエラー: {field} - {reason}")]
-    ValidationError {
-        field: String,
-        reason: String,
-    },
+    ValidationError { field: String, reason: String },
 
     #[error("リソース不足エラー: {resource_type} - {details}")]
     ResourceExhaustionError {
@@ -146,7 +140,10 @@ impl ProcessingError {
     }
 
     /// リソース不足エラーの作成
-    pub fn resource_exhaustion(resource_type: impl Into<String>, details: impl Into<String>) -> Self {
+    pub fn resource_exhaustion(
+        resource_type: impl Into<String>,
+        details: impl Into<String>,
+    ) -> Self {
         Self::ResourceExhaustionError {
             resource_type: resource_type.into(),
             details: details.into(),
@@ -157,9 +154,15 @@ impl ProcessingError {
     pub fn severity(&self) -> ErrorSeverity {
         match self {
             Self::TypeSafetyError { .. } | Self::ValidationError { .. } => ErrorSeverity::Critical,
-            Self::DependencyInjectionError { .. } | Self::ConfigurationError { .. } => ErrorSeverity::High,
-            Self::FileDiscoveryError { .. } | Self::ImageProcessingError { .. } => ErrorSeverity::Medium,
-            Self::ParallelExecutionError { .. } | Self::PersistenceError { .. } => ErrorSeverity::High,
+            Self::DependencyInjectionError { .. } | Self::ConfigurationError { .. } => {
+                ErrorSeverity::High
+            }
+            Self::FileDiscoveryError { .. } | Self::ImageProcessingError { .. } => {
+                ErrorSeverity::Medium
+            }
+            Self::ParallelExecutionError { .. } | Self::PersistenceError { .. } => {
+                ErrorSeverity::High
+            }
             Self::ChannelError { .. } | Self::TaskError { .. } => ErrorSeverity::Medium,
             Self::ResourceExhaustionError { .. } => ErrorSeverity::High,
             Self::InternalError { .. } => ErrorSeverity::Critical,
@@ -385,8 +388,12 @@ mod tests {
     async fn test_task_error() {
         // タスクエラーのテスト用にわざと失敗するタスクを作成
         let task = tokio::spawn(async {
-            panic!("テスト用のパニック");
+            // 意図的にTaskエラーを発生させるためにタスクを中断
+            tokio::task::yield_now().await;
+            std::future::pending::<()>().await;
         });
+        // タスクをキャンセルしてJoinErrorを発生させる
+        task.abort();
 
         let join_result = task.await;
         assert!(join_result.is_err(), "タスクは失敗するべきです");
@@ -427,16 +434,17 @@ mod tests {
 
     #[test]
     fn test_error_context() {
-        let file_error = ProcessingError::file_discovery("/test/path", anyhow::anyhow!("Not found"));
+        let file_error =
+            ProcessingError::file_discovery("/test/path", anyhow::anyhow!("Not found"));
         let context = file_error.context();
-        
+
         assert_eq!(context.operation, "file_discovery");
         assert_eq!(context.resource, Some("/test/path".to_string()));
         assert!(context.suggestion.is_some());
 
         let type_error = ProcessingError::type_safety("型制約違反", "ImageLoader");
         let context = type_error.context();
-        
+
         assert_eq!(context.operation, "type_safety_check");
         assert_eq!(context.resource, Some("ImageLoader".to_string()));
         assert!(context.suggestion.is_some());
@@ -445,10 +453,12 @@ mod tests {
     #[test]
     fn test_validation_error() {
         let validation_error = ValidationError::new("batch_size", "値は1以上である必要があります");
-        
+
         assert_eq!(validation_error.field, "batch_size");
         assert_eq!(validation_error.reason, "値は1以上である必要があります");
-        assert!(validation_error.to_string().contains("バリデーションエラー"));
+        assert!(validation_error
+            .to_string()
+            .contains("バリデーションエラー"));
     }
 
     #[test]

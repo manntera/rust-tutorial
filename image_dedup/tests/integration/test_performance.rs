@@ -1,4 +1,5 @@
 // パフォーマンス関連の統合テスト
+use anyhow::Result;
 use image_dedup::{
     engine::ProcessingEngine,
     image_loader::standard::StandardImageLoader,
@@ -55,19 +56,20 @@ impl PerformanceMetrics {
 }
 
 /// 複数のファイルを作成する
-fn create_test_files(dir: &std::path::Path, count: usize, prefix: &str) {
+fn create_test_files(dir: &std::path::Path, count: usize, prefix: &str) -> Result<()> {
     for i in 0..count {
         let filename = format!("{}_{:04}.png", prefix, i);
-        fs::write(dir.join(filename), MINIMAL_PNG_DATA).unwrap();
+        fs::write(dir.join(filename), MINIMAL_PNG_DATA)?;
     }
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_single_thread_vs_multi_thread_performance() {
-    let temp_dir = TempDir::new().unwrap();
+async fn test_single_thread_vs_multi_thread_performance() -> Result<()> {
+    let temp_dir = TempDir::new()?;
     let file_count = 100;
     
-    create_test_files(temp_dir.path(), file_count, "perf");
+    create_test_files(temp_dir.path(), file_count, "perf")?;
 
     // シングルスレッド処理
     let single_engine = ProcessingEngine::new(
@@ -82,8 +84,7 @@ async fn test_single_thread_vs_multi_thread_performance() {
     let start = Instant::now();
     let single_result = single_engine
         .process_directory(temp_dir.path().to_str().unwrap())
-        .await
-        .unwrap();
+        .await?;
     let single_metrics = PerformanceMetrics::new(start.elapsed(), single_result.processed_files);
 
     // マルチスレッド処理
@@ -99,8 +100,7 @@ async fn test_single_thread_vs_multi_thread_performance() {
     let start = Instant::now();
     let multi_result = multi_engine
         .process_directory(temp_dir.path().to_str().unwrap())
-        .await
-        .unwrap();
+        .await?;
     let multi_metrics = PerformanceMetrics::new(start.elapsed(), multi_result.processed_files);
 
     // 結果の検証
@@ -117,14 +117,16 @@ async fn test_single_thread_vs_multi_thread_performance() {
     if single_metrics.total_time > Duration::from_millis(100) { // 十分な実行時間がある場合のみ
         assert!(multi_metrics.throughput_files_per_sec >= single_metrics.throughput_files_per_sec * 0.8);
     }
+    
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_memory_usage_with_large_batch() {
-    let temp_dir = TempDir::new().unwrap();
+async fn test_memory_usage_with_large_batch() -> Result<()> {
+    let temp_dir = TempDir::new()?;
     let file_count = 200;
     
-    create_test_files(temp_dir.path(), file_count, "memory");
+    create_test_files(temp_dir.path(), file_count, "memory")?;
 
     // 小さなバッチサイズ
     let small_batch_engine = ProcessingEngine::new(
@@ -139,8 +141,7 @@ async fn test_memory_usage_with_large_batch() {
     let start = Instant::now();
     let small_result = small_batch_engine
         .process_directory(temp_dir.path().to_str().unwrap())
-        .await
-        .unwrap();
+        .await?;
     let small_time = start.elapsed();
 
     // 大きなバッチサイズ
@@ -156,8 +157,7 @@ async fn test_memory_usage_with_large_batch() {
     let start = Instant::now();
     let large_result = large_batch_engine
         .process_directory(temp_dir.path().to_str().unwrap())
-        .await
-        .unwrap();
+        .await?;
     let large_time = start.elapsed();
 
     // 両方とも同じ数のファイルを処理
@@ -173,14 +173,16 @@ async fn test_memory_usage_with_large_batch() {
     println!("大バッチ (100): {:?} - {:.2} files/sec", 
              large_time, 
              file_count as f64 / large_time.as_secs_f64());
+    
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_concurrent_processing_stress() {
-    let temp_dir = TempDir::new().unwrap();
+async fn test_concurrent_processing_stress() -> Result<()> {
+    let temp_dir = TempDir::new()?;
     let file_count = 50;
     
-    create_test_files(temp_dir.path(), file_count, "stress");
+    create_test_files(temp_dir.path(), file_count, "stress")?;
 
     // 高い並列度で処理
     let high_concurrency_engine = ProcessingEngine::new(
@@ -195,8 +197,7 @@ async fn test_concurrent_processing_stress() {
     let start = Instant::now();
     let result = high_concurrency_engine
         .process_directory(temp_dir.path().to_str().unwrap())
-        .await
-        .unwrap();
+        .await?;
     let elapsed = start.elapsed();
 
     // 正常に処理されることを確認
@@ -209,11 +210,13 @@ async fn test_concurrent_processing_stress() {
     println!("高並列処理 (32): {:?} - {:.2} files/sec", 
              elapsed, 
              file_count as f64 / elapsed.as_secs_f64());
+    
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_image_size_processing_performance() {
-    let temp_dir = TempDir::new().unwrap();
+async fn test_image_size_processing_performance() -> Result<()> {
+    let temp_dir = TempDir::new()?;
     
     // 異なるサイズの処理設定
     let configs = [
@@ -224,7 +227,7 @@ async fn test_image_size_processing_performance() {
 
     for (max_dimension, label) in configs {
         let file_count = 20;
-        create_test_files(temp_dir.path(), file_count, &format!("{}_img", label));
+        create_test_files(temp_dir.path(), file_count, &format!("{}_img", label))?;
 
         let engine = ProcessingEngine::new(
             StandardImageLoader::with_max_dimension(max_dimension),
@@ -238,8 +241,7 @@ async fn test_image_size_processing_performance() {
         let start = Instant::now();
         let result = engine
             .process_directory(temp_dir.path().to_str().unwrap())
-            .await
-            .unwrap();
+            .await?;
         let elapsed = start.elapsed();
 
         assert!(result.processed_files >= file_count); // 前のテストファイルも含む
@@ -251,14 +253,16 @@ async fn test_image_size_processing_performance() {
                  elapsed, 
                  result.processed_files as f64 / elapsed.as_secs_f64());
     }
+    
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_hash_algorithm_performance_comparison() {
-    let temp_dir = TempDir::new().unwrap();
+async fn test_hash_algorithm_performance_comparison() -> Result<()> {
+    let temp_dir = TempDir::new()?;
     let file_count = 30;
     
-    create_test_files(temp_dir.path(), file_count, "hash_perf");
+    create_test_files(temp_dir.path(), file_count, "hash_perf")?;
 
     // DCT ハッシュのパフォーマンス
     let dct_engine = ProcessingEngine::new(
@@ -273,8 +277,7 @@ async fn test_hash_algorithm_performance_comparison() {
     let start = Instant::now();
     let dct_result = dct_engine
         .process_directory(temp_dir.path().to_str().unwrap())
-        .await
-        .unwrap();
+        .await?;
     let dct_time = start.elapsed();
 
     // Average ハッシュのパフォーマンス
@@ -291,8 +294,7 @@ async fn test_hash_algorithm_performance_comparison() {
     let start = Instant::now();
     let avg_result = avg_engine
         .process_directory(temp_dir.path().to_str().unwrap())
-        .await
-        .unwrap();
+        .await?;
     let avg_time = start.elapsed();
 
     // 両方とも同じ数のファイルを処理
@@ -308,20 +310,22 @@ async fn test_hash_algorithm_performance_comparison() {
     // どちらも合理的な時間内で完了することを確認
     assert!(dct_time < Duration::from_secs(5));
     assert!(avg_time < Duration::from_secs(5));
+    
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_resource_cleanup_performance() {
+async fn test_resource_cleanup_performance() -> Result<()> {
     // メモリリークや不適切なリソース管理がないことを確認するテスト
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new()?;
     
     // 複数回の処理を実行してリソース管理をテスト
     for iteration in 0..5 {
         let file_count = 20;
         let subdir = temp_dir.path().join(format!("iter_{}", iteration));
-        fs::create_dir_all(&subdir).unwrap();
+        fs::create_dir_all(&subdir)?;
         
-        create_test_files(&subdir, file_count, "cleanup");
+        create_test_files(&subdir, file_count, "cleanup")?;
 
         let engine = ProcessingEngine::new(
             StandardImageLoader::new(),
@@ -335,8 +339,7 @@ async fn test_resource_cleanup_performance() {
         let start = Instant::now();
         let result = engine
             .process_directory(subdir.to_str().unwrap())
-            .await
-            .unwrap();
+            .await?;
         let elapsed = start.elapsed();
 
         assert_eq!(result.processed_files, file_count);
@@ -347,20 +350,23 @@ async fn test_resource_cleanup_performance() {
         
         println!("Iteration {}: {:?}", iteration, elapsed);
     }
+    
+    Ok(())
 }
 
 /// 複数の処理エンジンを同時実行してリソース競合をテスト
 #[tokio::test]
-async fn test_concurrent_engines_performance() {
-    let temp_dir = TempDir::new().unwrap();
+async fn test_concurrent_engines_performance() -> Result<()> {
+    let temp_dir = TempDir::new()?;
     
     // 複数のサブディレクトリを作成
-    let subdirs = (0..3).map(|i| {
+    let mut subdirs = Vec::new();
+    for i in 0..3 {
         let subdir = temp_dir.path().join(format!("concurrent_{}", i));
-        fs::create_dir_all(&subdir).unwrap();
-        create_test_files(&subdir, 15, "concurrent");
-        subdir
-    }).collect::<Vec<_>>();
+        fs::create_dir_all(&subdir)?;
+        create_test_files(&subdir, 15, "concurrent")?;
+        subdirs.push(subdir);
+    }
 
     let start = Instant::now();
     
@@ -404,4 +410,6 @@ async fn test_concurrent_engines_performance() {
     assert!(total_elapsed < Duration::from_secs(10));
     
     println!("並行処理合計時間: {:?}", total_elapsed);
+    
+    Ok(())
 }

@@ -1,142 +1,80 @@
-//! 静的ディスパッチ vs 動的ディスパッチのパフォーマンス比較ベンチマーク
+//! 静的ディスパッチ設定間のパフォーマンス比較ベンチマーク
 //!
-//! このベンチマークは以下を検証します：
-//! - 依存関係注入のオーバーヘッド
-//! - 関数呼び出しの最適化レベル
-//! - メモリ使用量の差
+//! 異なる静的設定間でのパフォーマンス差を測定
 
+use anyhow::Result;
 use criterion::{criterion_group, criterion_main, Criterion};
-use image_dedup::{
-    cli::commands::{ScanConfig, StaticScanConfig},
-    core::{DefaultConfig as StaticDefaultConfig, DependencyContainer, StaticDIContainer},
-    image_loader::standard::StandardImageLoader,
-    perceptual_hash::{
-        average_config::AverageConfig, average_hash::AverageHasher, config::AlgorithmConfig,
-        PerceptualHashBackend,
-    },
-    services::{ConsoleProgressReporter, DefaultProcessingConfig, MemoryHashPersistence},
-    storage::local::LocalStorageBackend,
-    ProcessingConfig,
+use image_dedup::core::{
+    traits::ProcessingConfig, DefaultConfig, HighPerformanceConfig, StaticDIContainer,
+    TestingConfig,
 };
-use std::hint::black_box;
 use std::time::Duration;
 use tempfile::TempDir;
 
-/// 動的コンポーネント群の型エイリアス
-type DynamicComponents = (
-    Box<dyn image_dedup::image_loader::ImageLoaderBackend>,
-    Box<dyn image_dedup::perceptual_hash::PerceptualHashBackend>,
-    Box<dyn image_dedup::storage::StorageBackend>,
-    Box<dyn image_dedup::core::ProcessingConfig>,
-    Box<dyn image_dedup::core::ProgressReporter>,
-    Box<dyn image_dedup::core::HashPersistence>,
-);
-
-/// 動的ディスパッチベンチマーク用のヘルパー
-fn create_dynamic_components() -> DynamicComponents {
-    let config = AverageConfig { size: 8 };
-    (
-        Box::new(StandardImageLoader::new()),
-        Box::new(config.create_hasher().unwrap()),
-        Box::new(LocalStorageBackend::new()),
-        Box::new(DefaultProcessingConfig::new(4)),
-        Box::new(ConsoleProgressReporter::new()),
-        Box::new(MemoryHashPersistence::new()),
-    )
-}
-
-/// 静的ディスパッチベンチマーク用のヘルパー
-fn create_static_components() -> (
-    StandardImageLoader,
-    AverageHasher,
-    LocalStorageBackend,
-    DefaultProcessingConfig,
-    ConsoleProgressReporter,
-    MemoryHashPersistence,
-) {
-    let config = AverageConfig { size: 8 };
-    (
-        StandardImageLoader::new(),
-        config.create_hasher().unwrap(),
-        LocalStorageBackend::new(),
-        DefaultProcessingConfig::new(4),
-        ConsoleProgressReporter::new(),
-        MemoryHashPersistence::new(),
-    )
-}
-
-/// 依存関係注入コンテナ作成のベンチマーク
-fn bench_di_container_creation(c: &mut Criterion) {
+/// DIコンテナ作成のベンチマーク
+fn benchmark_di_container_creation(c: &mut Criterion) {
     let mut group = c.benchmark_group("DI Container Creation");
+    group.measurement_time(Duration::from_secs(10));
 
-    // 動的DIコンテナ作成
-    group.bench_function("Dynamic DI Container", |b| {
+    group.bench_function("DefaultConfig", |b| {
         b.iter(|| {
-            let container = DependencyContainer::default();
-            black_box(container);
+            let container = StaticDIContainer::<DefaultConfig>::new();
+            std::hint::black_box(container)
         })
     });
 
-    // 静的DIコンテナ作成
-    group.bench_function("Static DI Container", |b| {
+    group.bench_function("HighPerformanceConfig", |b| {
         b.iter(|| {
-            let container = StaticDIContainer::<StaticDefaultConfig>::new();
-            black_box(container);
+            let container = StaticDIContainer::<HighPerformanceConfig>::new();
+            std::hint::black_box(container)
         })
     });
 
-    group.finish();
-}
-
-/// コンポーネント作成のベンチマーク
-fn bench_component_creation(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Component Creation");
-
-    // 動的コンポーネント作成
-    group.bench_function("Dynamic Components", |b| {
+    group.bench_function("TestingConfig", |b| {
         b.iter(|| {
-            let components = create_dynamic_components();
-            black_box(components);
-        })
-    });
-
-    // 静的コンポーネント作成
-    group.bench_function("Static Components", |b| {
-        b.iter(|| {
-            let components = create_static_components();
-            black_box(components);
+            let container = StaticDIContainer::<TestingConfig>::new();
+            std::hint::black_box(container)
         })
     });
 
     group.finish();
 }
 
-/// 関数呼び出しオーバーヘッドのベンチマーク
-fn bench_function_call_overhead(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Function Call Overhead");
+/// 設定アクセスのベンチマーク
+fn benchmark_config_access(c: &mut Criterion) {
+    let mut group = c.benchmark_group("Config Access");
+    group.measurement_time(Duration::from_secs(10));
 
-    let (_, _, _, dyn_config, _, _) = create_dynamic_components();
-    let (_, _, _, static_config, _, _) = create_static_components();
+    let default_container = StaticDIContainer::<DefaultConfig>::new();
+    let default_config = default_container.create_processing_config();
 
-    // 動的ディスパッチでの関数呼び出し
-    group.bench_function("Dynamic Function Calls", |b| {
+    let hp_container = StaticDIContainer::<HighPerformanceConfig>::new();
+    let hp_config = hp_container.create_processing_config();
+
+    let test_container = StaticDIContainer::<TestingConfig>::new();
+    let test_config = test_container.create_processing_config();
+
+    group.bench_function("DefaultConfig", |b| {
         b.iter(|| {
-            for _ in 0..1000 {
-                black_box(dyn_config.max_concurrent_tasks());
-                black_box(dyn_config.batch_size());
-                black_box(dyn_config.channel_buffer_size());
-            }
+            std::hint::black_box(default_config.max_concurrent_tasks());
+            std::hint::black_box(default_config.batch_size());
+            std::hint::black_box(default_config.channel_buffer_size());
         })
     });
 
-    // 静的ディスパッチでの関数呼び出し
-    group.bench_function("Static Function Calls", |b| {
+    group.bench_function("HighPerformanceConfig", |b| {
         b.iter(|| {
-            for _ in 0..1000 {
-                black_box(static_config.max_concurrent_tasks());
-                black_box(static_config.batch_size());
-                black_box(static_config.channel_buffer_size());
-            }
+            std::hint::black_box(hp_config.max_concurrent_tasks());
+            std::hint::black_box(hp_config.batch_size());
+            std::hint::black_box(hp_config.channel_buffer_size());
+        })
+    });
+
+    group.bench_function("TestingConfig", |b| {
+        b.iter(|| {
+            std::hint::black_box(test_config.max_concurrent_tasks());
+            std::hint::black_box(test_config.batch_size());
+            std::hint::black_box(test_config.channel_buffer_size());
         })
     });
 
@@ -144,196 +82,70 @@ fn bench_function_call_overhead(c: &mut Criterion) {
 }
 
 /// ProcessingEngine作成のベンチマーク
-fn bench_processing_engine_creation(c: &mut Criterion) {
+fn benchmark_processing_engine_creation(c: &mut Criterion) -> Result<()> {
     let mut group = c.benchmark_group("ProcessingEngine Creation");
     group.measurement_time(Duration::from_secs(10));
 
-    let temp_dir = TempDir::new().unwrap();
-    let output_path = temp_dir.path().join("benchmark.json");
+    let temp_dir = TempDir::new()?;
+    let output_path = temp_dir.path().join("test.json");
 
-    // 動的ディスパッチProcessingEngine
-    group.bench_function("Dynamic ProcessingEngine", |b| {
+    group.bench_function("DefaultConfig", |b| {
         b.iter(|| {
-            let container = DependencyContainer::default();
-            let dependencies = container.resolve_all_dependencies(&output_path).unwrap();
-            let engine = dependencies.create_processing_engine();
-            black_box(engine);
-        })
-    });
-
-    // 静的ディスパッチProcessingEngine
-    group.bench_function("Static ProcessingEngine", |b| {
-        b.iter(|| {
-            let container = StaticDIContainer::<StaticDefaultConfig>::new();
+            let container = StaticDIContainer::<DefaultConfig>::new();
             let engine = container.create_processing_engine(&output_path);
-            black_box(engine);
+            std::hint::black_box(engine)
+        })
+    });
+
+    group.bench_function("HighPerformanceConfig", |b| {
+        b.iter(|| {
+            let container = StaticDIContainer::<HighPerformanceConfig>::new();
+            let engine = container.create_processing_engine(&output_path);
+            std::hint::black_box(engine)
+        })
+    });
+
+    group.bench_function("TestingConfig", |b| {
+        b.iter(|| {
+            let container = StaticDIContainer::<TestingConfig>::new();
+            let engine = container.create_processing_engine(&output_path);
+            std::hint::black_box(engine)
+        })
+    });
+
+    group.finish();
+    Ok(())
+}
+
+/// メモリサイズ測定
+fn benchmark_memory_sizes(c: &mut Criterion) {
+    let mut group = c.benchmark_group("Memory Sizes");
+
+    group.bench_function("Container Sizes", |b| {
+        b.iter(|| {
+            let default_size = std::mem::size_of::<StaticDIContainer<DefaultConfig>>();
+            let hp_size = std::mem::size_of::<StaticDIContainer<HighPerformanceConfig>>();
+            let test_size = std::mem::size_of::<StaticDIContainer<TestingConfig>>();
+
+            std::hint::black_box((default_size, hp_size, test_size))
         })
     });
 
     group.finish();
 }
 
-/// ハッシュ計算のベンチマーク（実際の処理での性能差）
-fn bench_hash_computation(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Hash Computation");
-    group.measurement_time(Duration::from_secs(5));
-
-    // ダミー画像データ（8x8 グレースケール）
-    let dummy_image = image::DynamicImage::new_rgb8(8, 8);
-
-    let (_, dyn_hasher, _, _, _, _) = create_dynamic_components();
-    let (_, static_hasher, _, _, _, _) = create_static_components();
-
-    // 動的ディスパッチでのハッシュ計算
-    group.bench_function("Dynamic Hash Computation", |b| {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        b.iter(|| {
-            rt.block_on(async {
-                for _ in 0..100 {
-                    let result = dyn_hasher.generate_hash(&dummy_image).await;
-                    let _ = black_box(result);
-                }
-            })
-        })
-    });
-
-    // 静的ディスパッチでのハッシュ計算
-    group.bench_function("Static Hash Computation", |b| {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        b.iter(|| {
-            rt.block_on(async {
-                for _ in 0..100 {
-                    let result = static_hasher.generate_hash(&dummy_image).await;
-                    let _ = black_box(result);
-                }
-            })
-        })
-    });
-
-    group.finish();
-}
-
-/// メモリ使用量の比較ベンチマーク
-fn bench_memory_usage(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Memory Usage");
-
-    // 静的DIコンテナのメモリ使用量測定
-    group.bench_function("Static DI Memory", |b| {
-        b.iter(|| {
-            let containers: Vec<StaticDIContainer<StaticDefaultConfig>> =
-                (0..1000).map(|_| StaticDIContainer::new()).collect();
-            black_box(containers);
-        })
-    });
-
-    // 動的DIコンテナのメモリ使用量測定
-    group.bench_function("Dynamic DI Memory", |b| {
-        b.iter(|| {
-            let containers: Vec<DependencyContainer> =
-                (0..1000).map(|_| DependencyContainer::default()).collect();
-            black_box(containers);
-        })
-    });
-
-    group.finish();
-}
-
-/// 全体的なワークフローのベンチマーク
-fn bench_full_workflow(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Full Workflow");
-    group.measurement_time(Duration::from_secs(15));
-    group.sample_size(10);
-
-    // テスト用の空ディレクトリ作成
-    let temp_dir = TempDir::new().unwrap();
-    let target_dir = temp_dir.path().join("target");
-    std::fs::create_dir_all(&target_dir).unwrap();
-
-    // 動的ディスパッチでの完全ワークフロー
-    group.bench_function("Dynamic Full Workflow", |b| {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        b.iter(|| {
-            rt.block_on(async {
-                let output = temp_dir.path().join("dynamic_output.json");
-                let config = ScanConfig {
-                    target_directory: target_dir.clone(),
-                    output,
-                    threads: Some(1),
-                    force: true,
-                };
-                let container = DependencyContainer::default();
-                let result =
-                    image_dedup::cli::commands::execute_scan_with_container(config, container)
-                        .await;
-                let _ = black_box(result);
-            })
-        })
-    });
-
-    // 静的ディスパッチでの完全ワークフロー
-    group.bench_function("Static Full Workflow", |b| {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        b.iter(|| {
-            rt.block_on(async {
-                let output = temp_dir.path().join("static_output.json");
-                let config = StaticScanConfig {
-                    target_directory: target_dir.clone(),
-                    output,
-                    threads: Some(1),
-                    force: true,
-                };
-                let result = image_dedup::cli::commands::execute_default_scan(config).await;
-                let _ = black_box(result);
-            })
-        })
-    });
-
-    group.finish();
-}
-
-/// パフォーマンス回帰テスト
-fn bench_performance_regression(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Performance Regression");
-
-    // 静的ディスパッチが動的ディスパッチより速いことを確認
-    let (_, dyn_hasher, _, _, _, _) = create_dynamic_components();
-    let (_, static_hasher, _, _, _, _) = create_static_components();
-
-    group.bench_function("Regression Test - Dynamic", |b| {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        b.iter(|| {
-            rt.block_on(async {
-                let dummy_img = image::DynamicImage::new_rgb8(8, 8);
-                let result = dyn_hasher.generate_hash(&dummy_img).await;
-                let _ = black_box(result);
-            })
-        })
-    });
-
-    group.bench_function("Regression Test - Static", |b| {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        b.iter(|| {
-            rt.block_on(async {
-                let dummy_img = image::DynamicImage::new_rgb8(8, 8);
-                let result = static_hasher.generate_hash(&dummy_img).await;
-                let _ = black_box(result);
-            })
-        })
-    });
-
-    group.finish();
+// Wrapper function to handle Result return type for criterion
+fn benchmark_processing_engine_creation_wrapper(c: &mut Criterion) {
+    if let Err(e) = benchmark_processing_engine_creation(c) {
+        panic!("Benchmark failed: {e}");
+    }
 }
 
 criterion_group!(
     benches,
-    bench_di_container_creation,
-    bench_component_creation,
-    bench_function_call_overhead,
-    bench_processing_engine_creation,
-    bench_hash_computation,
-    bench_memory_usage,
-    bench_full_workflow,
-    bench_performance_regression,
+    benchmark_di_container_creation,
+    benchmark_config_access,
+    benchmark_processing_engine_creation_wrapper,
+    benchmark_memory_sizes
 );
-
 criterion_main!(benches);
