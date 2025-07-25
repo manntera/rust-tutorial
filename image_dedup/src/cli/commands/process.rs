@@ -91,7 +91,7 @@ pub async fn execute_process(
         .flat_map(|group| {
             // Check if any file has is_original flag set
             let has_original_flags = group.files.iter().any(|f| f.is_original);
-            
+
             group
                 .files
                 .iter()

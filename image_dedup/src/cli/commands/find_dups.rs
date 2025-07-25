@@ -152,9 +152,11 @@ pub async fn execute_find_dups(
         // Only process groups with duplicates
         if group_files.len() > 1 {
             // Sort by file size (largest first) to determine the original
-            let mut files_with_sizes: Vec<_> = group_files.into_iter()
+            let mut files_with_sizes: Vec<_> = group_files
+                .into_iter()
                 .map(|file| {
-                    let file_size = hash_entries.iter()
+                    let file_size = hash_entries
+                        .iter()
                         .find(|e| e.file_path == file.path)
                         .and_then(|e| e.metadata.as_ref())
                         .and_then(|m| m.get("file_size"))
@@ -163,41 +165,44 @@ pub async fn execute_find_dups(
                     (file, file_size)
                 })
                 .collect();
-            
+
             files_with_sizes.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by size descending
-            
+
             // Find the index of the original (largest file)
             let original_index = 0; // After sorting, the first file is the largest
-            
+
             // Get the hash of the new original file (largest file)
-            let original_hash = hash_entries.iter()
+            let original_hash = hash_entries
+                .iter()
                 .find(|e| e.file_path == files_with_sizes[0].0.path)
                 .map(|e| e.hash_bits)
                 .unwrap_or(0);
-            
+
             // Mark the original file and recalculate distances from the new original
-            let sorted_files: Vec<DuplicateFile> = files_with_sizes.into_iter()
+            let sorted_files: Vec<DuplicateFile> = files_with_sizes
+                .into_iter()
                 .enumerate()
                 .map(|(idx, (mut file, _))| {
                     file.is_original = idx == original_index;
-                    
+
                     // Recalculate distance from the new original (largest file)
-                    let file_hash = hash_entries.iter()
+                    let file_hash = hash_entries
+                        .iter()
                         .find(|e| e.file_path == file.path)
                         .map(|e| e.hash_bits)
                         .unwrap_or(0);
                     file.distance_from_first = hamming_distance(original_hash, file_hash);
-                    
+
                     file
                 })
                 .collect();
-            
+
             let group = DuplicateGroup {
                 group_id,
                 original_index,
                 files: sorted_files,
             };
-            
+
             groups.push(group);
             group_id += 1;
         }
@@ -580,15 +585,15 @@ mod tests {
 
         assert_eq!(report.total_groups, 1);
         assert_eq!(report.groups[0].files.len(), 3);
-        
+
         // Verify that the largest file (large.jpg) is marked as original (index 0 after sorting)
         assert_eq!(report.groups[0].original_index, 0);
         assert_eq!(report.groups[0].files[0].path, "large.jpg");
-        assert_eq!(report.groups[0].files[0].is_original, true);
-        
+        assert!(report.groups[0].files[0].is_original);
+
         // Verify other files are marked as duplicates
-        assert_eq!(report.groups[0].files[1].is_original, false);
-        assert_eq!(report.groups[0].files[2].is_original, false);
+        assert!(!report.groups[0].files[1].is_original);
+        assert!(!report.groups[0].files[2].is_original);
     }
 
     #[tokio::test]
@@ -623,6 +628,6 @@ mod tests {
 
         // When no file size is available, the first file should be the original
         assert_eq!(report.groups[0].original_index, 0);
-        assert_eq!(report.groups[0].files[0].is_original, true);
+        assert!(report.groups[0].files[0].is_original);
     }
 }

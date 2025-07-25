@@ -40,6 +40,10 @@ pub enum Commands {
         /// Configuration preset (default, high_performance, testing)
         #[arg(short = 'p', long)]
         config_preset: Option<String>,
+
+        /// Configuration file path
+        #[arg(short = 'c', long)]
+        config: Option<PathBuf>,
     },
 
     /// Find duplicate images using hash database

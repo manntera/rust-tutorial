@@ -35,16 +35,10 @@ struct FilteredReport {
 }
 
 /// Filter duplicate groups by minimum hash distance
-pub async fn execute_filter_duplicates(
-    input_json: PathBuf,
-    min_distance: u32,
-) -> Result<()> {
+pub async fn execute_filter_duplicates(input_json: PathBuf, min_distance: u32) -> Result<()> {
     // Validate input file
     if !input_json.exists() {
-        anyhow::bail!(
-            "Input JSON file does not exist: {}",
-            input_json.display()
-        );
+        anyhow::bail!("Input JSON file does not exist: {}", input_json.display());
     }
 
     println!("🔍 重複ファイルフィルターツール");
@@ -55,8 +49,10 @@ pub async fn execute_filter_duplicates(
     let json_content = std::fs::read_to_string(&input_json)?;
     let report: DuplicatesReport = serde_json::from_str(&json_content)?;
 
-    println!("📊 元レポート: {} グループ, {} 重複ファイル (閾値: {})",
-        report.total_groups, report.total_duplicates, report.threshold);
+    println!(
+        "📊 元レポート: {} グループ, {} 重複ファイル (閾値: {})",
+        report.total_groups, report.total_duplicates, report.threshold
+    );
 
     // Filter groups based on minimum distance
     let filtered_groups: Vec<DuplicateGroup> = report
@@ -64,7 +60,7 @@ pub async fn execute_filter_duplicates(
         .into_iter()
         .filter_map(|group| {
             let original_files_count = group.files.len();
-            
+
             // Find files that meet the distance criteria
             let mut filtered_files: Vec<DuplicateFile> = group
                 .files
@@ -79,8 +75,10 @@ pub async fn execute_filter_duplicates(
             // Keep group only if it has distance criteria files and more than one file total
             if filtered_files.len() > 1 && original_files_count > 1 {
                 // Check if we have any non-original files that meet the distance criteria
-                let has_distance_matches = filtered_files.iter().any(|f| !f.is_original && f.distance_from_first >= min_distance);
-                
+                let has_distance_matches = filtered_files
+                    .iter()
+                    .any(|f| !f.is_original && f.distance_from_first >= min_distance);
+
                 if has_distance_matches {
                     // Sort by file size to determine the original (largest first)
                     // If no size info, keep original designation
@@ -128,17 +126,34 @@ pub async fn execute_filter_duplicates(
 
     println!("\n✅ フィルタリング完了!");
     println!("📊 フィルタ結果:");
-    println!("   - フィルタ後グループ数: {}", filtered_report.filtered_groups);
-    println!("   - フィルタ後重複ファイル数: {}", filtered_report.filtered_duplicates);
+    println!(
+        "   - フィルタ後グループ数: {}",
+        filtered_report.filtered_groups
+    );
+    println!(
+        "   - フィルタ後重複ファイル数: {}",
+        filtered_report.filtered_duplicates
+    );
 
     // Display filtered results
     if filtered_report.filtered_groups > 0 {
         println!("\n📌 フィルタ結果 (距離 {min_distance} 以上):");
         for group in &filtered_report.groups {
-            println!("\n  グループ {} ({} ファイル):", group.group_id, group.files.len());
+            println!(
+                "\n  グループ {} ({} ファイル):",
+                group.group_id,
+                group.files.len()
+            );
             for file in &group.files {
-                let marker = if file.is_original { " [オリジナル]" } else { "" };
-                println!("    - {} (距離: {}){}", file.path, file.distance_from_first, marker);
+                let marker = if file.is_original {
+                    " [オリジナル]"
+                } else {
+                    ""
+                };
+                println!(
+                    "    - {} (距離: {}){}",
+                    file.path, file.distance_from_first, marker
+                );
             }
         }
     } else {
@@ -154,7 +169,12 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn create_test_duplicate_file(path: &str, hash: &str, distance: u32, is_original: bool) -> DuplicateFile {
+    fn create_test_duplicate_file(
+        path: &str,
+        hash: &str,
+        distance: u32,
+        is_original: bool,
+    ) -> DuplicateFile {
         DuplicateFile {
             path: path.to_string(),
             hash: hash.to_string(),
@@ -200,7 +220,7 @@ mod tests {
                 0,
                 vec![
                     create_test_duplicate_file("original1.jpg", "hash1", 0, true),
-                    create_test_duplicate_file("dup1_low.jpg", "hash2", 1, false),  // distance 1
+                    create_test_duplicate_file("dup1_low.jpg", "hash2", 1, false), // distance 1
                     create_test_duplicate_file("dup1_high.jpg", "hash3", 5, false), // distance 5
                 ],
             ),
@@ -209,7 +229,7 @@ mod tests {
                 0,
                 vec![
                     create_test_duplicate_file("original2.jpg", "hash4", 0, true),
-                    create_test_duplicate_file("dup2_low.jpg", "hash5", 2, false),  // distance 2
+                    create_test_duplicate_file("dup2_low.jpg", "hash5", 2, false), // distance 2
                 ],
             ),
         ];
@@ -228,16 +248,14 @@ mod tests {
         let input_json = temp_dir.path().join("duplicates.json");
 
         // Create test data with only low distances
-        let groups = vec![
-            create_test_duplicate_group(
-                0,
-                0,
-                vec![
-                    create_test_duplicate_file("original.jpg", "hash1", 0, true),
-                    create_test_duplicate_file("dup_low.jpg", "hash2", 1, false), // distance 1
-                ],
-            ),
-        ];
+        let groups = vec![create_test_duplicate_group(
+            0,
+            0,
+            vec![
+                create_test_duplicate_file("original.jpg", "hash1", 0, true),
+                create_test_duplicate_file("dup_low.jpg", "hash2", 1, false), // distance 1
+            ],
+        )];
 
         let report = create_test_duplicates_report(5, groups);
         let json = serde_json::to_string_pretty(&report).unwrap();
@@ -253,17 +271,15 @@ mod tests {
         let input_json = temp_dir.path().join("duplicates.json");
 
         // Create test data where original has distance 0
-        let groups = vec![
-            create_test_duplicate_group(
-                0,
-                0,
-                vec![
-                    create_test_duplicate_file("original.jpg", "hash1", 0, true),
-                    create_test_duplicate_file("dup1.jpg", "hash2", 3, false),
-                    create_test_duplicate_file("dup2.jpg", "hash3", 6, false),
-                ],
-            ),
-        ];
+        let groups = vec![create_test_duplicate_group(
+            0,
+            0,
+            vec![
+                create_test_duplicate_file("original.jpg", "hash1", 0, true),
+                create_test_duplicate_file("dup1.jpg", "hash2", 3, false),
+                create_test_duplicate_file("dup2.jpg", "hash3", 6, false),
+            ],
+        )];
 
         let report = create_test_duplicates_report(10, groups);
         let json = serde_json::to_string_pretty(&report).unwrap();
@@ -333,18 +349,16 @@ mod tests {
         let input_json = temp_dir.path().join("multiple.json");
 
         // Create test data with multiple files meeting distance criteria
-        let groups = vec![
-            create_test_duplicate_group(
-                0,
-                0,
-                vec![
-                    create_test_duplicate_file("original.jpg", "hash1", 0, true),
-                    create_test_duplicate_file("dup1.jpg", "hash2", 2, false), // below threshold
-                    create_test_duplicate_file("dup2.jpg", "hash3", 5, false), // above threshold
-                    create_test_duplicate_file("dup3.jpg", "hash4", 7, false), // above threshold
-                ],
-            ),
-        ];
+        let groups = vec![create_test_duplicate_group(
+            0,
+            0,
+            vec![
+                create_test_duplicate_file("original.jpg", "hash1", 0, true),
+                create_test_duplicate_file("dup1.jpg", "hash2", 2, false), // below threshold
+                create_test_duplicate_file("dup2.jpg", "hash3", 5, false), // above threshold
+                create_test_duplicate_file("dup3.jpg", "hash4", 7, false), // above threshold
+            ],
+        )];
 
         let report = create_test_duplicates_report(10, groups);
         let json = serde_json::to_string_pretty(&report).unwrap();

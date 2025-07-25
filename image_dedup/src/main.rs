@@ -16,6 +16,7 @@ async fn main() -> Result<()> {
             algorithm,
             hash_size,
             config_preset,
+            config,
         } => {
             commands::execute_scan(
                 target_directory,
@@ -25,6 +26,7 @@ async fn main() -> Result<()> {
                 algorithm,
                 hash_size,
                 config_preset,
+                config,
             )
             .await?;
         }
