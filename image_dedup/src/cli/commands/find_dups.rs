@@ -36,6 +36,7 @@ enum HashDatabase {
 #[derive(Debug, Serialize, Deserialize)]
 struct DuplicateGroup {
     group_id: usize,
+    original_index: usize,
     files: Vec<DuplicateFile>,
 }
 
@@ -44,6 +45,7 @@ struct DuplicateFile {
     path: String,
     hash: String,
     distance_from_first: u32,
+    is_original: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -120,14 +122,12 @@ pub async fn execute_find_dups(
         let base_entry = &hash_entries[i];
         let base_hash = base_entry.hash_bits;
 
-        let mut group = DuplicateGroup {
-            group_id,
-            files: vec![DuplicateFile {
-                path: base_entry.file_path.clone(),
-                hash: base_entry.hash.clone(),
-                distance_from_first: 0,
-            }],
-        };
+        let mut group_files = vec![DuplicateFile {
+            path: base_entry.file_path.clone(),
+            hash: base_entry.hash.clone(),
+            distance_from_first: 0,
+            is_original: false, // Will be set after sorting
+        }];
 
         processed.insert(i);
 
@@ -139,17 +139,51 @@ pub async fn execute_find_dups(
 
             let distance = hamming_distance(base_hash, entry.hash_bits);
             if distance <= threshold {
-                group.files.push(DuplicateFile {
+                group_files.push(DuplicateFile {
                     path: entry.file_path.clone(),
                     hash: entry.hash.clone(),
                     distance_from_first: distance,
+                    is_original: false,
                 });
                 processed.insert(j);
             }
         }
 
-        // Only add groups with duplicates
-        if group.files.len() > 1 {
+        // Only process groups with duplicates
+        if group_files.len() > 1 {
+            // Sort by file size (largest first) to determine the original
+            let mut files_with_sizes: Vec<_> = group_files.into_iter()
+                .map(|file| {
+                    let file_size = hash_entries.iter()
+                        .find(|e| e.file_path == file.path)
+                        .and_then(|e| e.metadata.as_ref())
+                        .and_then(|m| m.get("file_size"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    (file, file_size)
+                })
+                .collect();
+            
+            files_with_sizes.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by size descending
+            
+            // Find the index of the original (largest file)
+            let original_index = 0; // After sorting, the first file is the largest
+            
+            // Mark the original file and rebuild the files vector
+            let sorted_files: Vec<DuplicateFile> = files_with_sizes.into_iter()
+                .enumerate()
+                .map(|(idx, (mut file, _))| {
+                    file.is_original = idx == original_index;
+                    file
+                })
+                .collect();
+            
+            let group = DuplicateGroup {
+                group_id,
+                original_index,
+                files: sorted_files,
+            };
+            
             groups.push(group);
             group_id += 1;
         }
@@ -445,10 +479,12 @@ mod tests {
             path: "test.jpg".to_string(),
             hash: "abcd1234".to_string(),
             distance_from_first: 5,
+            is_original: true,
         };
 
         let group = DuplicateGroup {
             group_id: 0,
+            original_index: 0,
             files: vec![file],
         };
 
@@ -489,5 +525,90 @@ mod tests {
 
         let invalid_scan_result: ScanResult = serde_json::from_str(invalid_json).unwrap();
         assert!(!invalid_scan_result.validate_scan_info());
+    }
+
+    #[tokio::test]
+    async fn test_find_dups_prioritize_by_file_size() {
+        let temp_dir = TempDir::new().unwrap();
+        let hash_db = temp_dir.path().join("hashes.json");
+        let output = temp_dir.path().join("duplicates.json");
+
+        // Create hash entries with file size metadata
+        let entries = vec![
+            HashEntry {
+                file_path: "small.jpg".to_string(),
+                hash: "hash1".to_string(),
+                hash_bits: 0b0000_0000,
+                metadata: Some(serde_json::json!({"file_size": 1000})),
+            },
+            HashEntry {
+                file_path: "large.jpg".to_string(),
+                hash: "hash2".to_string(),
+                hash_bits: 0b0000_0001, // distance 1 from small.jpg
+                metadata: Some(serde_json::json!({"file_size": 5000})),
+            },
+            HashEntry {
+                file_path: "medium.jpg".to_string(),
+                hash: "hash3".to_string(),
+                hash_bits: 0b0000_0011, // distance 2 from small.jpg
+                metadata: Some(serde_json::json!({"file_size": 3000})),
+            },
+        ];
+
+        let json = serde_json::to_string_pretty(&entries).unwrap();
+        fs::write(&hash_db, json).unwrap();
+
+        execute_find_dups(hash_db, output.clone(), 3).await.unwrap();
+
+        // Check output file
+        let content = fs::read_to_string(&output).unwrap();
+        let report: DuplicatesReport = serde_json::from_str(&content).unwrap();
+
+        assert_eq!(report.total_groups, 1);
+        assert_eq!(report.groups[0].files.len(), 3);
+        
+        // Verify that the largest file (large.jpg) is marked as original (index 0 after sorting)
+        assert_eq!(report.groups[0].original_index, 0);
+        assert_eq!(report.groups[0].files[0].path, "large.jpg");
+        assert_eq!(report.groups[0].files[0].is_original, true);
+        
+        // Verify other files are marked as duplicates
+        assert_eq!(report.groups[0].files[1].is_original, false);
+        assert_eq!(report.groups[0].files[2].is_original, false);
+    }
+
+    #[tokio::test]
+    async fn test_find_dups_fallback_when_no_file_size() {
+        let temp_dir = TempDir::new().unwrap();
+        let hash_db = temp_dir.path().join("hashes.json");
+        let output = temp_dir.path().join("duplicates.json");
+
+        // Create entries without file size metadata
+        let entries = vec![
+            HashEntry {
+                file_path: "first.jpg".to_string(),
+                hash: "hash1".to_string(),
+                hash_bits: 0b0000_0000,
+                metadata: None,
+            },
+            HashEntry {
+                file_path: "second.jpg".to_string(),
+                hash: "hash2".to_string(),
+                hash_bits: 0b0000_0001,
+                metadata: None,
+            },
+        ];
+
+        let json = serde_json::to_string_pretty(&entries).unwrap();
+        fs::write(&hash_db, json).unwrap();
+
+        execute_find_dups(hash_db, output.clone(), 3).await.unwrap();
+
+        let content = fs::read_to_string(&output).unwrap();
+        let report: DuplicatesReport = serde_json::from_str(&content).unwrap();
+
+        // When no file size is available, the first file should be the original
+        assert_eq!(report.groups[0].original_index, 0);
+        assert_eq!(report.groups[0].files[0].is_original, true);
     }
 }

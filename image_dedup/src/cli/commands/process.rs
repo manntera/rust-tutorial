@@ -15,6 +15,8 @@ struct DuplicatesReport {
 #[derive(Debug, Deserialize, Serialize)]
 struct DuplicateGroup {
     group_id: usize,
+    #[serde(default)]
+    original_index: usize,
     files: Vec<DuplicateFile>,
 }
 
@@ -23,6 +25,8 @@ struct DuplicateFile {
     path: String,
     hash: String,
     distance_from_first: u32,
+    #[serde(default)]
+    is_original: bool,
 }
 
 /// Prompt user for confirmation
@@ -80,16 +84,28 @@ pub async fn execute_process(
     println!("   - グループ数: {}", report.total_groups);
     println!("   - 重複ファイル総数: {}", report.total_duplicates);
 
-    // Count files to process (keep first file in each group)
+    // Count files to process (keep original file in each group)
     let files_to_process: Vec<(usize, &DuplicateFile)> = report
         .groups
         .iter()
         .flat_map(|group| {
+            // Check if any file has is_original flag set
+            let has_original_flags = group.files.iter().any(|f| f.is_original);
+            
             group
                 .files
                 .iter()
-                .skip(1) // Keep the first file
-                .map(move |file| (group.group_id, file))
+                .enumerate()
+                .filter(move |(idx, file)| {
+                    if has_original_flags {
+                        // New format: use is_original flag
+                        !file.is_original
+                    } else {
+                        // Fallback: use original_index if available, otherwise skip first
+                        *idx != group.original_index
+                    }
+                })
+                .map(move |(_, file)| (group.group_id, file))
         })
         .collect();
 
@@ -220,16 +236,19 @@ mod tests {
         // Create duplicate report with these files
         let group = DuplicateGroup {
             group_id: 0,
+            original_index: 0,
             files: vec![
                 DuplicateFile {
                     path: file1.to_string_lossy().to_string(),
                     hash: "hash1".to_string(),
                     distance_from_first: 0,
+                    is_original: false,
                 },
                 DuplicateFile {
                     path: file2.to_string_lossy().to_string(),
                     hash: "hash2".to_string(),
                     distance_from_first: 3,
+                    is_original: false,
                 },
             ],
         };
@@ -262,16 +281,19 @@ mod tests {
         // Create duplicate report
         let group = DuplicateGroup {
             group_id: 0,
+            original_index: 0,
             files: vec![
                 DuplicateFile {
                     path: file1.to_string_lossy().to_string(),
                     hash: "hash1".to_string(),
                     distance_from_first: 0,
+                    is_original: false,
                 },
                 DuplicateFile {
                     path: file2.to_string_lossy().to_string(),
                     hash: "hash2".to_string(),
                     distance_from_first: 3,
+                    is_original: false,
                 },
             ],
         };
@@ -308,36 +330,43 @@ mod tests {
         let groups = vec![
             DuplicateGroup {
                 group_id: 0,
+                original_index: 0,
                 files: vec![
                     DuplicateFile {
                         path: files[0].to_string_lossy().to_string(),
                         hash: "hash1".to_string(),
                         distance_from_first: 0,
+                        is_original: false,
                     },
                     DuplicateFile {
                         path: files[1].to_string_lossy().to_string(),
                         hash: "hash2".to_string(),
                         distance_from_first: 2,
+                        is_original: false,
                     },
                     DuplicateFile {
                         path: files[2].to_string_lossy().to_string(),
                         hash: "hash3".to_string(),
                         distance_from_first: 3,
+                        is_original: false,
                     },
                 ],
             },
             DuplicateGroup {
                 group_id: 1,
+                original_index: 0,
                 files: vec![
                     DuplicateFile {
                         path: files[3].to_string_lossy().to_string(),
                         hash: "hash4".to_string(),
                         distance_from_first: 0,
+                        is_original: false,
                     },
                     DuplicateFile {
                         path: files[4].to_string_lossy().to_string(),
                         hash: "hash5".to_string(),
                         distance_from_first: 1,
+                        is_original: false,
                     },
                 ],
             },
@@ -378,16 +407,19 @@ mod tests {
 
         let group = DuplicateGroup {
             group_id: 0,
+            original_index: 0,
             files: vec![
                 DuplicateFile {
                     path: file1.to_string_lossy().to_string(),
                     hash: "hash1".to_string(),
                     distance_from_first: 0,
+                    is_original: false,
                 },
                 DuplicateFile {
                     path: file2.to_string_lossy().to_string(),
                     hash: "hash2".to_string(),
                     distance_from_first: 3,
+                    is_original: false,
                 },
             ],
         };
@@ -421,5 +453,105 @@ mod tests {
 
         assert!(format!("{move_action:?}").contains("Move"));
         assert!(format!("{delete_action:?}").contains("Delete"));
+    }
+
+    #[tokio::test]
+    async fn test_process_with_original_index() {
+        let temp_dir = TempDir::new().unwrap();
+        let dup_list = temp_dir.path().join("duplicates.json");
+        let dest = temp_dir.path().join("moved");
+
+        // Create test files
+        let file1 = temp_dir.path().join("small.jpg");
+        let file2 = temp_dir.path().join("large.jpg");
+        let file3 = temp_dir.path().join("medium.jpg");
+        fs::write(&file1, "s").unwrap(); // smallest
+        fs::write(&file2, "large content").unwrap(); // largest
+        fs::write(&file3, "medium").unwrap(); // medium
+
+        // Create duplicate report with original_index pointing to large.jpg
+        let group = DuplicateGroup {
+            group_id: 0,
+            original_index: 1, // Index 1 is large.jpg
+            files: vec![
+                DuplicateFile {
+                    path: file1.to_string_lossy().to_string(),
+                    hash: "hash1".to_string(),
+                    distance_from_first: 0,
+                    is_original: false,
+                },
+                DuplicateFile {
+                    path: file2.to_string_lossy().to_string(),
+                    hash: "hash2".to_string(),
+                    distance_from_first: 1,
+                    is_original: true, // This is the original
+                },
+                DuplicateFile {
+                    path: file3.to_string_lossy().to_string(),
+                    hash: "hash3".to_string(),
+                    distance_from_first: 2,
+                    is_original: false,
+                },
+            ],
+        };
+
+        let report_json = create_test_duplicate_report(vec![group]).unwrap();
+        fs::write(&dup_list, report_json).unwrap();
+
+        let result = execute_process(dup_list, ProcessAction::Move, dest.clone(), true).await;
+        assert!(result.is_ok());
+
+        // Check that large.jpg (the original) still exists
+        assert!(file2.exists());
+
+        // Check that other files were moved
+        assert!(!file1.exists());
+        assert!(!file3.exists());
+        assert!(dest.join("group_0").join("small.jpg").exists());
+        assert!(dest.join("group_0").join("medium.jpg").exists());
+    }
+
+    #[tokio::test]
+    async fn test_process_backward_compatibility() {
+        let temp_dir = TempDir::new().unwrap();
+        let dup_list = temp_dir.path().join("duplicates.json");
+        let dest = temp_dir.path().join("moved");
+
+        // Create test files
+        let file1 = temp_dir.path().join("first.jpg");
+        let file2 = temp_dir.path().join("second.jpg");
+        fs::write(&file1, "test1").unwrap();
+        fs::write(&file2, "test2").unwrap();
+
+        // Create old format report (without original_index and is_original)
+        let report_json = format!(
+            r#"{{
+            "total_groups": 1,
+            "total_duplicates": 1,
+            "threshold": 5,
+            "groups": [{{
+                "group_id": 0,
+                "files": [{{
+                    "path": "{}",
+                    "hash": "hash1",
+                    "distance_from_first": 0
+                }}, {{
+                    "path": "{}",
+                    "hash": "hash2",
+                    "distance_from_first": 1
+                }}]
+            }}]
+        }}"#,
+            file1.to_string_lossy(),
+            file2.to_string_lossy()
+        );
+        fs::write(&dup_list, report_json).unwrap();
+
+        let result = execute_process(dup_list, ProcessAction::Move, dest.clone(), true).await;
+        assert!(result.is_ok());
+
+        // For backward compatibility, first file should be kept
+        assert!(file1.exists());
+        assert!(!file2.exists());
     }
 }
