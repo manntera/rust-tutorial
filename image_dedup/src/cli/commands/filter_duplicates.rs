@@ -5,7 +5,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DuplicateGroup {
     group_id: usize,
-    original_index: usize,
+    representative_file: String,
     files: Vec<DuplicateFile>,
 }
 
@@ -13,8 +13,8 @@ struct DuplicateGroup {
 struct DuplicateFile {
     path: String,
     hash: String,
-    distance_from_first: u32,
-    is_original: bool,
+    #[serde(alias = "distance_from_first")]
+    distance_from_representative: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -61,11 +61,11 @@ pub async fn execute_filter_duplicates(input_json: PathBuf, min_distance: u32) -
         .filter_map(|group| {
             let original_files_count = group.files.len();
 
-            // Find files that meet the distance criteria
+            // Find files that meet the distance criteria (include representative file with distance 0)
             let mut filtered_files: Vec<DuplicateFile> = group
                 .files
                 .into_iter()
-                .filter(|file| file.distance_from_first >= min_distance || file.is_original)
+                .filter(|file| file.distance_from_representative >= min_distance || file.distance_from_representative == 0)
                 .collect();
 
             // Remove duplicate file paths (keep only the first occurrence)
@@ -74,32 +74,15 @@ pub async fn execute_filter_duplicates(input_json: PathBuf, min_distance: u32) -
 
             // Keep group only if it has distance criteria files and more than one file total
             if filtered_files.len() > 1 && original_files_count > 1 {
-                // Check if we have any non-original files that meet the distance criteria
+                // Check if we have files that meet the distance criteria
                 let has_distance_matches = filtered_files
                     .iter()
-                    .any(|f| !f.is_original && f.distance_from_first >= min_distance);
+                    .any(|f| f.distance_from_representative >= min_distance);
 
                 if has_distance_matches {
-                    // Sort by file size to determine the original (largest first)
-                    // If no size info, keep original designation
-                    filtered_files.sort_by(|a, b| {
-                        if a.is_original && !b.is_original {
-                            std::cmp::Ordering::Less
-                        } else if !a.is_original && b.is_original {
-                            std::cmp::Ordering::Greater
-                        } else {
-                            std::cmp::Ordering::Equal
-                        }
-                    });
-
-                    // Reset original flags - only the first (largest) file should be original
-                    for (i, file) in filtered_files.iter_mut().enumerate() {
-                        file.is_original = i == 0;
-                    }
-
                     Some(DuplicateGroup {
                         group_id: group.group_id,
-                        original_index: 0, // Always 0 after sorting
+                        representative_file: group.representative_file,
                         files: filtered_files,
                     })
                 } else {
@@ -145,14 +128,9 @@ pub async fn execute_filter_duplicates(input_json: PathBuf, min_distance: u32) -
                 group.files.len()
             );
             for file in &group.files {
-                let marker = if file.is_original {
-                    " [オリジナル]"
-                } else {
-                    ""
-                };
                 println!(
-                    "    - {} (距離: {}){}",
-                    file.path, file.distance_from_first, marker
+                    "    - {} (距離: {})",
+                    file.path, file.distance_from_representative
                 );
             }
         }
@@ -173,24 +151,22 @@ mod tests {
         path: &str,
         hash: &str,
         distance: u32,
-        is_original: bool,
     ) -> DuplicateFile {
         DuplicateFile {
             path: path.to_string(),
             hash: hash.to_string(),
-            distance_from_first: distance,
-            is_original,
+            distance_from_representative: distance,
         }
     }
 
     fn create_test_duplicate_group(
         group_id: usize,
-        original_index: usize,
+        representative_file: &str,
         files: Vec<DuplicateFile>,
     ) -> DuplicateGroup {
         DuplicateGroup {
             group_id,
-            original_index,
+            representative_file: representative_file.to_string(),
             files,
         }
     }
@@ -217,19 +193,19 @@ mod tests {
         let groups = vec![
             create_test_duplicate_group(
                 0,
-                0,
+                "original1.jpg",
                 vec![
-                    create_test_duplicate_file("original1.jpg", "hash1", 0, true),
-                    create_test_duplicate_file("dup1_low.jpg", "hash2", 1, false), // distance 1
-                    create_test_duplicate_file("dup1_high.jpg", "hash3", 5, false), // distance 5
+                    create_test_duplicate_file("original1.jpg", "hash1", 0),
+                    create_test_duplicate_file("dup1_low.jpg", "hash2", 1), // distance 1
+                    create_test_duplicate_file("dup1_high.jpg", "hash3", 5), // distance 5
                 ],
             ),
             create_test_duplicate_group(
                 1,
-                0,
+                "original2.jpg",
                 vec![
-                    create_test_duplicate_file("original2.jpg", "hash4", 0, true),
-                    create_test_duplicate_file("dup2_low.jpg", "hash5", 2, false), // distance 2
+                    create_test_duplicate_file("original2.jpg", "hash4", 0),
+                    create_test_duplicate_file("dup2_low.jpg", "hash5", 2), // distance 2
                 ],
             ),
         ];
@@ -250,10 +226,10 @@ mod tests {
         // Create test data with only low distances
         let groups = vec![create_test_duplicate_group(
             0,
-            0,
+            "original.jpg",
             vec![
-                create_test_duplicate_file("original.jpg", "hash1", 0, true),
-                create_test_duplicate_file("dup_low.jpg", "hash2", 1, false), // distance 1
+                create_test_duplicate_file("original.jpg", "hash1", 0),
+                create_test_duplicate_file("dup_low.jpg", "hash2", 1), // distance 1
             ],
         )];
 
@@ -273,11 +249,11 @@ mod tests {
         // Create test data where original has distance 0
         let groups = vec![create_test_duplicate_group(
             0,
-            0,
+            "original.jpg",
             vec![
-                create_test_duplicate_file("original.jpg", "hash1", 0, true),
-                create_test_duplicate_file("dup1.jpg", "hash2", 3, false),
-                create_test_duplicate_file("dup2.jpg", "hash3", 6, false),
+                create_test_duplicate_file("original.jpg", "hash1", 0),
+                create_test_duplicate_file("dup1.jpg", "hash2", 3),
+                create_test_duplicate_file("dup2.jpg", "hash3", 6),
             ],
         )];
 
@@ -323,8 +299,8 @@ mod tests {
 
     #[test]
     fn test_filtered_report_serialization() {
-        let file = create_test_duplicate_file("test.jpg", "hash1", 5, true);
-        let group = create_test_duplicate_group(0, 0, vec![file]);
+        let file = create_test_duplicate_file("test.jpg", "hash1", 5);
+        let group = create_test_duplicate_group(0, "test.jpg", vec![file]);
 
         let report = FilteredReport {
             original_threshold: 10,
@@ -351,12 +327,12 @@ mod tests {
         // Create test data with multiple files meeting distance criteria
         let groups = vec![create_test_duplicate_group(
             0,
-            0,
+            "original.jpg",
             vec![
-                create_test_duplicate_file("original.jpg", "hash1", 0, true),
-                create_test_duplicate_file("dup1.jpg", "hash2", 2, false), // below threshold
-                create_test_duplicate_file("dup2.jpg", "hash3", 5, false), // above threshold
-                create_test_duplicate_file("dup3.jpg", "hash4", 7, false), // above threshold
+                create_test_duplicate_file("original.jpg", "hash1", 0),
+                create_test_duplicate_file("dup1.jpg", "hash2", 2), // below threshold
+                create_test_duplicate_file("dup2.jpg", "hash3", 5), // above threshold
+                create_test_duplicate_file("dup3.jpg", "hash4", 7), // above threshold
             ],
         )];
 

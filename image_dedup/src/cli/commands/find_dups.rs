@@ -36,7 +36,7 @@ enum HashDatabase {
 #[derive(Debug, Serialize, Deserialize)]
 struct DuplicateGroup {
     group_id: usize,
-    original_index: usize,
+    representative_file: String,
     files: Vec<DuplicateFile>,
 }
 
@@ -44,8 +44,7 @@ struct DuplicateGroup {
 struct DuplicateFile {
     path: String,
     hash: String,
-    distance_from_first: u32,
-    is_original: bool,
+    distance_from_representative: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -125,8 +124,7 @@ pub async fn execute_find_dups(
         let mut group_files = vec![DuplicateFile {
             path: base_entry.file_path.clone(),
             hash: base_entry.hash.clone(),
-            distance_from_first: 0,
-            is_original: false, // Will be set after sorting
+            distance_from_representative: 0,
         }];
 
         processed.insert(i);
@@ -142,8 +140,7 @@ pub async fn execute_find_dups(
                 group_files.push(DuplicateFile {
                     path: entry.file_path.clone(),
                     hash: entry.hash.clone(),
-                    distance_from_first: distance,
-                    is_original: false,
+                    distance_from_representative: distance,
                 });
                 processed.insert(j);
             }
@@ -151,56 +148,10 @@ pub async fn execute_find_dups(
 
         // Only process groups with duplicates
         if group_files.len() > 1 {
-            // Sort by file size (largest first) to determine the original
-            let mut files_with_sizes: Vec<_> = group_files
-                .into_iter()
-                .map(|file| {
-                    let file_size = hash_entries
-                        .iter()
-                        .find(|e| e.file_path == file.path)
-                        .and_then(|e| e.metadata.as_ref())
-                        .and_then(|m| m.get("file_size"))
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-                    (file, file_size)
-                })
-                .collect();
-
-            files_with_sizes.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by size descending
-
-            // Find the index of the original (largest file)
-            let original_index = 0; // After sorting, the first file is the largest
-
-            // Get the hash of the new original file (largest file)
-            let original_hash = hash_entries
-                .iter()
-                .find(|e| e.file_path == files_with_sizes[0].0.path)
-                .map(|e| e.hash_bits)
-                .unwrap_or(0);
-
-            // Mark the original file and recalculate distances from the new original
-            let sorted_files: Vec<DuplicateFile> = files_with_sizes
-                .into_iter()
-                .enumerate()
-                .map(|(idx, (mut file, _))| {
-                    file.is_original = idx == original_index;
-
-                    // Recalculate distance from the new original (largest file)
-                    let file_hash = hash_entries
-                        .iter()
-                        .find(|e| e.file_path == file.path)
-                        .map(|e| e.hash_bits)
-                        .unwrap_or(0);
-                    file.distance_from_first = hamming_distance(original_hash, file_hash);
-
-                    file
-                })
-                .collect();
-
             let group = DuplicateGroup {
                 group_id,
-                original_index,
-                files: sorted_files,
+                representative_file: base_entry.file_path.clone(),
+                files: group_files,
             };
 
             groups.push(group);
@@ -238,7 +189,7 @@ pub async fn execute_find_dups(
         for (idx, group) in report.groups.iter().take(3).enumerate() {
             println!("\n  グループ {} ({} ファイル):", idx + 1, group.files.len());
             for file in &group.files {
-                println!("    - {} (距離: {})", file.path, file.distance_from_first);
+                println!("    - {} (距離: {})", file.path, file.distance_from_representative);
             }
         }
     }
@@ -367,9 +318,9 @@ mod tests {
         let group = &report.groups[0];
         assert_eq!(group.files.len(), 3);
         assert_eq!(group.files[0].path, "image1.jpg");
-        assert_eq!(group.files[0].distance_from_first, 0);
-        assert_eq!(group.files[1].distance_from_first, 1);
-        assert_eq!(group.files[2].distance_from_first, 2);
+        assert_eq!(group.files[0].distance_from_representative, 0);
+        assert_eq!(group.files[1].distance_from_representative, 1);
+        assert_eq!(group.files[2].distance_from_representative, 2);
     }
 
     #[tokio::test]
@@ -497,13 +448,12 @@ mod tests {
         let file = DuplicateFile {
             path: "test.jpg".to_string(),
             hash: "abcd1234".to_string(),
-            distance_from_first: 5,
-            is_original: true,
+            distance_from_representative: 5,
         };
 
         let group = DuplicateGroup {
             group_id: 0,
-            original_index: 0,
+            representative_file: "test.jpg".to_string(),
             files: vec![file],
         };
 
@@ -586,14 +536,10 @@ mod tests {
         assert_eq!(report.total_groups, 1);
         assert_eq!(report.groups[0].files.len(), 3);
 
-        // Verify that the largest file (large.jpg) is marked as original (index 0 after sorting)
-        assert_eq!(report.groups[0].original_index, 0);
-        assert_eq!(report.groups[0].files[0].path, "large.jpg");
-        assert!(report.groups[0].files[0].is_original);
-
-        // Verify other files are marked as duplicates
-        assert!(!report.groups[0].files[1].is_original);
-        assert!(!report.groups[0].files[2].is_original);
+        // Verify that the representative file is the first found file
+        assert_eq!(report.groups[0].representative_file, "small.jpg");
+        assert_eq!(report.groups[0].files[0].path, "small.jpg");
+        assert_eq!(report.groups[0].files[0].distance_from_representative, 0);
     }
 
     #[tokio::test]
@@ -626,8 +572,9 @@ mod tests {
         let content = fs::read_to_string(&output).unwrap();
         let report: DuplicatesReport = serde_json::from_str(&content).unwrap();
 
-        // When no file size is available, the first file should be the original
-        assert_eq!(report.groups[0].original_index, 0);
-        assert!(report.groups[0].files[0].is_original);
+        // When no file size is available, the first file should be the representative
+        assert_eq!(report.groups[0].representative_file, "first.jpg");
+        assert_eq!(report.groups[0].files[0].path, "first.jpg");
+        assert_eq!(report.groups[0].files[0].distance_from_representative, 0);
     }
 }

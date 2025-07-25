@@ -1,6 +1,7 @@
 use crate::cli::ProcessAction;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -12,11 +13,35 @@ struct DuplicatesReport {
     groups: Vec<DuplicateGroup>,
 }
 
+// Hash database structures for metadata lookup
+#[derive(Debug, Deserialize)]
+struct HashEntry {
+    file_path: String,
+    #[allow(dead_code)]
+    hash: String,
+    #[allow(dead_code)]
+    hash_bits: u64,
+    metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ScanResult {
+    images: Vec<HashEntry>,
+    #[allow(dead_code)]
+    scan_info: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum HashDatabase {
+    NewFormat(ScanResult),
+    OldFormat(Vec<HashEntry>),
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct DuplicateGroup {
     group_id: usize,
-    #[serde(default)]
-    original_index: usize,
+    representative_file: String,
     files: Vec<DuplicateFile>,
 }
 
@@ -24,9 +49,7 @@ struct DuplicateGroup {
 struct DuplicateFile {
     path: String,
     hash: String,
-    distance_from_first: u32,
-    #[serde(default)]
-    is_original: bool,
+    distance_from_representative: u32,
 }
 
 /// Prompt user for confirmation
@@ -49,12 +72,55 @@ fn confirm_action(action: &ProcessAction, total_files: usize) -> Result<bool> {
     Ok(input.trim().to_lowercase() == "y")
 }
 
+/// Load hash database for metadata lookup
+fn load_hash_database(scan_database_path: &Path) -> Result<HashMap<String, u64>> {
+    let json_content = fs::read_to_string(scan_database_path)?;
+    let database: HashDatabase = serde_json::from_str(&json_content)?;
+    
+    let hash_entries = match database {
+        HashDatabase::NewFormat(scan_result) => scan_result.images,
+        HashDatabase::OldFormat(entries) => entries,
+    };
+    
+    let mut file_sizes = HashMap::new();
+    for entry in hash_entries {
+        if let Some(metadata) = entry.metadata {
+            if let Some(file_size) = metadata.get("file_size").and_then(|v| v.as_u64()) {
+                file_sizes.insert(entry.file_path, file_size);
+            }
+        }
+    }
+    
+    Ok(file_sizes)
+}
+
+/// Find the file with the largest size in a group
+fn find_largest_file(group: &DuplicateGroup, file_sizes: &HashMap<String, u64>) -> String {
+    group
+        .files
+        .iter()
+        .max_by_key(|file| file_sizes.get(&file.path).unwrap_or(&0))
+        .map(|file| file.path.clone())
+        .unwrap_or_else(|| group.files[0].path.clone())
+}
+
 /// Process duplicate images (move or delete)
 pub async fn execute_process(
     duplicate_list: PathBuf,
     action: ProcessAction,
     dest: PathBuf,
     no_confirm: bool,
+) -> Result<()> {
+    execute_process_with_scan_database(duplicate_list, action, dest, no_confirm, None).await
+}
+
+/// Process duplicate images with optional scan database for file size lookup
+pub async fn execute_process_with_scan_database(
+    duplicate_list: PathBuf,
+    action: ProcessAction,
+    dest: PathBuf,
+    no_confirm: bool,
+    scan_database: Option<PathBuf>,
 ) -> Result<()> {
     // Validate input file
     if !duplicate_list.exists() {
@@ -80,37 +146,56 @@ pub async fn execute_process(
         return Ok(());
     }
 
+    // Load file sizes from scan database if available
+    let file_sizes = if let Some(scan_db_path) = &scan_database {
+        match load_hash_database(scan_db_path) {
+            Ok(sizes) => {
+                println!("📊 スキャンデータベースからファイルサイズ情報を読み込みました");
+                sizes
+            }
+            Err(e) => {
+                println!("⚠️  スキャンデータベースの読み込みに失敗: {e}");
+                println!("   各グループの代表ファイル（最初に見つかったファイル）を保持します");
+                HashMap::new()
+            }
+        }
+    } else {
+        println!("📊 ファイルサイズ情報なし - 各グループの代表ファイルを保持します");
+        HashMap::new()
+    };
+
     println!("\n📊 重複情報:");
     println!("   - グループ数: {}", report.total_groups);
     println!("   - 重複ファイル総数: {}", report.total_duplicates);
 
-    // Count files to process (keep original file in each group)
-    let files_to_process: Vec<(usize, &DuplicateFile)> = report
+    // Determine which files to keep and which to process
+    let files_to_process: Vec<(usize, &DuplicateFile, String)> = report
         .groups
         .iter()
         .flat_map(|group| {
-            // Check if any file has is_original flag set
-            let has_original_flags = group.files.iter().any(|f| f.is_original);
+            let file_to_keep = if file_sizes.is_empty() {
+                // No file size info - use representative file or first in group if not set
+                if !group.representative_file.is_empty() {
+                    group.representative_file.clone()
+                } else {
+                    group.files[0].path.clone()
+                }
+            } else {
+                // Use file size info to find largest file
+                find_largest_file(group, &file_sizes)
+            };
 
+            let file_to_keep_clone = file_to_keep.clone();
             group
                 .files
                 .iter()
-                .enumerate()
-                .filter(move |(idx, file)| {
-                    if has_original_flags {
-                        // New format: use is_original flag
-                        !file.is_original
-                    } else {
-                        // Fallback: use original_index if available, otherwise skip first
-                        *idx != group.original_index
-                    }
-                })
-                .map(move |(_, file)| (group.group_id, file))
+                .filter(move |file| file.path != file_to_keep)
+                .map(move |file| (group.group_id, file, file_to_keep_clone.clone()))
         })
         .collect();
 
     println!(
-        "   - 処理対象ファイル数: {} (各グループの最初のファイルは保持)",
+        "   - 処理対象ファイル数: {} (各グループで最大サイズのファイルを保持)",
         files_to_process.len()
     );
 
@@ -129,7 +214,7 @@ pub async fn execute_process(
     let mut success_count = 0;
     let mut error_count = 0;
 
-    for (group_id, file) in files_to_process {
+    for (group_id, file, _file_to_keep) in files_to_process {
         let source_path = Path::new(&file.path);
 
         match &action {
@@ -236,19 +321,17 @@ mod tests {
         // Create duplicate report with these files
         let group = DuplicateGroup {
             group_id: 0,
-            original_index: 0,
+            representative_file: file1.to_string_lossy().to_string(),
             files: vec![
                 DuplicateFile {
                     path: file1.to_string_lossy().to_string(),
                     hash: "hash1".to_string(),
-                    distance_from_first: 0,
-                    is_original: false,
+                    distance_from_representative: 0,
                 },
                 DuplicateFile {
                     path: file2.to_string_lossy().to_string(),
                     hash: "hash2".to_string(),
-                    distance_from_first: 3,
-                    is_original: false,
+                    distance_from_representative: 3,
                 },
             ],
         };
@@ -281,19 +364,17 @@ mod tests {
         // Create duplicate report
         let group = DuplicateGroup {
             group_id: 0,
-            original_index: 0,
+            representative_file: file1.to_string_lossy().to_string(),
             files: vec![
                 DuplicateFile {
                     path: file1.to_string_lossy().to_string(),
                     hash: "hash1".to_string(),
-                    distance_from_first: 0,
-                    is_original: false,
+                    distance_from_representative: 0,
                 },
                 DuplicateFile {
                     path: file2.to_string_lossy().to_string(),
                     hash: "hash2".to_string(),
-                    distance_from_first: 3,
-                    is_original: false,
+                    distance_from_representative: 3,
                 },
             ],
         };
@@ -330,43 +411,38 @@ mod tests {
         let groups = vec![
             DuplicateGroup {
                 group_id: 0,
-                original_index: 0,
+                representative_file: files[0].to_string_lossy().to_string(),
                 files: vec![
                     DuplicateFile {
                         path: files[0].to_string_lossy().to_string(),
                         hash: "hash1".to_string(),
-                        distance_from_first: 0,
-                        is_original: false,
+                        distance_from_representative: 0,
                     },
                     DuplicateFile {
                         path: files[1].to_string_lossy().to_string(),
                         hash: "hash2".to_string(),
-                        distance_from_first: 2,
-                        is_original: false,
+                        distance_from_representative: 2,
                     },
                     DuplicateFile {
                         path: files[2].to_string_lossy().to_string(),
                         hash: "hash3".to_string(),
-                        distance_from_first: 3,
-                        is_original: false,
+                        distance_from_representative: 3,
                     },
                 ],
             },
             DuplicateGroup {
                 group_id: 1,
-                original_index: 0,
+                representative_file: files[3].to_string_lossy().to_string(),
                 files: vec![
                     DuplicateFile {
                         path: files[3].to_string_lossy().to_string(),
                         hash: "hash4".to_string(),
-                        distance_from_first: 0,
-                        is_original: false,
+                        distance_from_representative: 0,
                     },
                     DuplicateFile {
                         path: files[4].to_string_lossy().to_string(),
                         hash: "hash5".to_string(),
-                        distance_from_first: 1,
-                        is_original: false,
+                        distance_from_representative: 1,
                     },
                 ],
             },
@@ -407,19 +483,17 @@ mod tests {
 
         let group = DuplicateGroup {
             group_id: 0,
-            original_index: 0,
+            representative_file: file1.to_string_lossy().to_string(),
             files: vec![
                 DuplicateFile {
                     path: file1.to_string_lossy().to_string(),
                     hash: "hash1".to_string(),
-                    distance_from_first: 0,
-                    is_original: false,
+                    distance_from_representative: 0,
                 },
                 DuplicateFile {
                     path: file2.to_string_lossy().to_string(),
                     hash: "hash2".to_string(),
-                    distance_from_first: 3,
-                    is_original: false,
+                    distance_from_representative: 3,
                 },
             ],
         };
@@ -456,7 +530,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_process_with_original_index() {
+    async fn test_process_with_representative_file() {
         let temp_dir = TempDir::new().unwrap();
         let dup_list = temp_dir.path().join("duplicates.json");
         let dest = temp_dir.path().join("moved");
@@ -469,28 +543,25 @@ mod tests {
         fs::write(&file2, "large content").unwrap(); // largest
         fs::write(&file3, "medium").unwrap(); // medium
 
-        // Create duplicate report with original_index pointing to large.jpg
+        // Create duplicate report with representative file pointing to large.jpg
         let group = DuplicateGroup {
             group_id: 0,
-            original_index: 1, // Index 1 is large.jpg
+            representative_file: file2.to_string_lossy().to_string(),
             files: vec![
                 DuplicateFile {
                     path: file1.to_string_lossy().to_string(),
                     hash: "hash1".to_string(),
-                    distance_from_first: 0,
-                    is_original: false,
+                    distance_from_representative: 0,
                 },
                 DuplicateFile {
                     path: file2.to_string_lossy().to_string(),
                     hash: "hash2".to_string(),
-                    distance_from_first: 1,
-                    is_original: true, // This is the original
+                    distance_from_representative: 1,
                 },
                 DuplicateFile {
                     path: file3.to_string_lossy().to_string(),
                     hash: "hash3".to_string(),
-                    distance_from_first: 2,
-                    is_original: false,
+                    distance_from_representative: 2,
                 },
             ],
         };
@@ -501,10 +572,102 @@ mod tests {
         let result = execute_process(dup_list, ProcessAction::Move, dest.clone(), true).await;
         assert!(result.is_ok());
 
-        // Check that large.jpg (the original) still exists
+        // Check that large.jpg (the representative file) still exists
         assert!(file2.exists());
 
         // Check that other files were moved
+        assert!(!file1.exists());
+        assert!(!file3.exists());
+        assert!(dest.join("group_0").join("small.jpg").exists());
+        assert!(dest.join("group_0").join("medium.jpg").exists());
+    }
+
+    #[tokio::test]
+    async fn test_process_with_file_size_database() {
+        let temp_dir = TempDir::new().unwrap();
+        let dup_list = temp_dir.path().join("duplicates.json");
+        let scan_db = temp_dir.path().join("scan.json");
+        let dest = temp_dir.path().join("moved");
+
+        // Create test files with different sizes
+        let file1 = temp_dir.path().join("small.jpg");
+        let file2 = temp_dir.path().join("large.jpg");
+        let file3 = temp_dir.path().join("medium.jpg");
+        fs::write(&file1, "s").unwrap(); // smallest (1 byte)
+        fs::write(&file2, "large content").unwrap(); // largest (13 bytes)
+        fs::write(&file3, "medium").unwrap(); // medium (6 bytes)
+
+        // Create scan database with file size metadata
+        let scan_data = format!(
+            r#"{{
+            "images": [
+                {{
+                    "file_path": "{}",
+                    "hash": "hash1",
+                    "hash_bits": 12345,
+                    "metadata": {{"file_size": 1}}
+                }},
+                {{
+                    "file_path": "{}",
+                    "hash": "hash2",
+                    "hash_bits": 67890,
+                    "metadata": {{"file_size": 13}}
+                }},
+                {{
+                    "file_path": "{}",
+                    "hash": "hash3",
+                    "hash_bits": 11111,
+                    "metadata": {{"file_size": 6}}
+                }}
+            ],
+            "scan_info": {{}}
+        }}"#,
+            file1.to_string_lossy(),
+            file2.to_string_lossy(),
+            file3.to_string_lossy()
+        );
+        fs::write(&scan_db, scan_data).unwrap();
+
+        // Create duplicate report with representative file pointing to small.jpg (but largest should be kept due to size info)
+        let group = DuplicateGroup {
+            group_id: 0,
+            representative_file: file1.to_string_lossy().to_string(),
+            files: vec![
+                DuplicateFile {
+                    path: file1.to_string_lossy().to_string(),
+                    hash: "hash1".to_string(),
+                    distance_from_representative: 0,
+                },
+                DuplicateFile {
+                    path: file2.to_string_lossy().to_string(),
+                    hash: "hash2".to_string(),
+                    distance_from_representative: 1,
+                },
+                DuplicateFile {
+                    path: file3.to_string_lossy().to_string(),
+                    hash: "hash3".to_string(),
+                    distance_from_representative: 2,
+                },
+            ],
+        };
+
+        let report_json = create_test_duplicate_report(vec![group]).unwrap();
+        fs::write(&dup_list, report_json).unwrap();
+
+        let result = execute_process_with_scan_database(
+            dup_list,
+            ProcessAction::Move,
+            dest.clone(),
+            true,
+            Some(scan_db),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        // With file size information, large.jpg (largest file) should be kept
+        assert!(file2.exists());
+
+        // Other files should be moved
         assert!(!file1.exists());
         assert!(!file3.exists());
         assert!(dest.join("group_0").join("small.jpg").exists());
@@ -531,17 +694,19 @@ mod tests {
             "threshold": 5,
             "groups": [{{
                 "group_id": 0,
+                "representative_file": "{}",
                 "files": [{{
                     "path": "{}",
                     "hash": "hash1",
-                    "distance_from_first": 0
+                    "distance_from_representative": 0
                 }}, {{
                     "path": "{}",
                     "hash": "hash2",
-                    "distance_from_first": 1
+                    "distance_from_representative": 1
                 }}]
             }}]
         }}"#,
+            file1.to_string_lossy(),
             file1.to_string_lossy(),
             file2.to_string_lossy()
         );
