@@ -16,6 +16,7 @@ async fn main() -> Result<()> {
             algorithm,
             hash_size,
             config_preset,
+            config,
         } => {
             commands::execute_scan(
                 target_directory,
@@ -25,6 +26,7 @@ async fn main() -> Result<()> {
                 algorithm,
                 hash_size,
                 config_preset,
+                config,
             )
             .await?;
         }
@@ -34,6 +36,12 @@ async fn main() -> Result<()> {
             threshold,
         } => {
             commands::execute_find_dups(hash_database, output, threshold).await?;
+        }
+        Commands::FilterDuplicates {
+            input_json,
+            min_distance,
+        } => {
+            commands::execute_filter_duplicates(input_json, min_distance).await?;
         }
         Commands::Process {
             duplicate_list,

@@ -247,6 +247,36 @@ impl<P: StaticDependencyProvider> StaticDIContainer<P> {
         })
     }
 
+    /// ProcessingEngineをカスタムハッシャーで作成（静的ディスパッチ + 動的ハッシャー）
+    ///
+    /// 他の依存関係は静的ディスパッチを使用し、ハッシャーのみ動的に注入
+    /// これにより設定ファイルからのパラメータを適用可能
+    #[allow(clippy::type_complexity)]
+    pub fn create_processing_engine_with_hasher<H>(
+        &self,
+        output_path: &std::path::Path,
+        hasher: H,
+    ) -> ProcessingEngine<
+        P::ImageLoader,
+        H,
+        P::Storage,
+        P::ProcessingConfig,
+        P::ProgressReporter,
+        P::HashPersistence,
+    >
+    where
+        H: crate::perceptual_hash::PerceptualHashBackend + Send + Sync + 'static,
+    {
+        ProcessingEngine::new(
+            P::create_image_loader(),
+            hasher,
+            P::create_storage(),
+            P::create_processing_config(),
+            P::create_progress_reporter(),
+            P::create_hash_persistence(output_path),
+        )
+    }
+
     /// 個別の依存関係を作成（テスト用）
     pub fn create_image_loader(&self) -> P::ImageLoader {
         P::create_image_loader()

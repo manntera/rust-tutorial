@@ -40,6 +40,10 @@ pub enum Commands {
         /// Configuration preset (default, high_performance, testing)
         #[arg(short = 'p', long)]
         config_preset: Option<String>,
+
+        /// Configuration file path
+        #[arg(short = 'c', long)]
+        config: Option<PathBuf>,
     },
 
     /// Find duplicate images using hash database
@@ -55,6 +59,17 @@ pub enum Commands {
         /// Maximum Hamming distance for duplicates
         #[arg(short, long, default_value = "5")]
         threshold: u32,
+    },
+
+    /// Filter duplicate groups by minimum hash distance
+    FilterDuplicates {
+        /// Duplicate list file from find-dups command
+        #[arg(default_value = "duplicates.json")]
+        input_json: PathBuf,
+
+        /// Minimum hash distance to display
+        #[arg(short, long, default_value = "3")]
+        min_distance: u32,
     },
 
     /// Process duplicate images (move or delete)
