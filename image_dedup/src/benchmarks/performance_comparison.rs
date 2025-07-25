@@ -240,10 +240,7 @@ impl PerformanceComparison {
     }
 
     /// JSON形式でのレポート出力
-    pub fn export_json_report(
-        &self,
-        path: &std::path::Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn export_json_report(&self, path: &std::path::Path) -> anyhow::Result<()> {
         let mut report = HashMap::new();
         report.insert("timestamp", chrono::Utc::now().to_rfc3339());
         report.insert("test_results", serde_json::to_string(&self.results)?);

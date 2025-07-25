@@ -82,7 +82,7 @@ pub async fn execute_find_dups(
     let json_content = std::fs::read_to_string(&hash_database)?;
     let database: HashDatabase = serde_json::from_str(&json_content)?;
 
-    let mut hash_entries = match database {
+    let hash_entries = match database {
         HashDatabase::NewFormat(scan_result) => {
             // scan_infoの情報を表示
             if scan_result.validate_scan_info() {
@@ -107,35 +107,44 @@ pub async fn execute_find_dups(
     );
 
     // Group similar images
-    let mut groups: Vec<DuplicateGroup> = Vec::new();
+    let mut groups = Vec::new();
     let mut group_id = 0;
 
-    while !hash_entries.is_empty() {
-        let base_entry = hash_entries.remove(0);
+    let mut processed = std::collections::HashSet::new();
+
+    for i in 0..hash_entries.len() {
+        if processed.contains(&i) {
+            continue;
+        }
+
+        let base_entry = &hash_entries[i];
         let base_hash = base_entry.hash_bits;
 
         let mut group = DuplicateGroup {
             group_id,
             files: vec![DuplicateFile {
-                path: base_entry.file_path,
-                hash: base_entry.hash,
+                path: base_entry.file_path.clone(),
+                hash: base_entry.hash.clone(),
                 distance_from_first: 0,
             }],
         };
 
-        // Find all similar images
-        let mut i = 0;
-        while i < hash_entries.len() {
-            let distance = hamming_distance(base_hash, hash_entries[i].hash_bits);
+        processed.insert(i);
+
+        // Find all similar images in remaining entries
+        for (j, entry) in hash_entries.iter().enumerate() {
+            if processed.contains(&j) {
+                continue;
+            }
+
+            let distance = hamming_distance(base_hash, entry.hash_bits);
             if distance <= threshold {
-                let similar_entry = hash_entries.remove(i);
                 group.files.push(DuplicateFile {
-                    path: similar_entry.file_path,
-                    hash: similar_entry.hash,
+                    path: entry.file_path.clone(),
+                    hash: entry.hash.clone(),
                     distance_from_first: distance,
                 });
-            } else {
-                i += 1;
+                processed.insert(j);
             }
         }
 
